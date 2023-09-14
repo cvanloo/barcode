@@ -49,13 +49,15 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 func Encode(text string) (Code128, error) {
 	runes := []rune(text)
 
-	// - each symbol is encoded using 6 modules
-	// - a module is 1, 2, 3, or 4 units in size
-	// - the six modules making up a symbol have a total size of 11 units
-	// - we define a unit as 1 pixel
-	//
-	// quiet 10px + start 11px + 11px*len + checksum 11px + stop 13px + quiet 10px = 55px
-	width, height := 11*len(runes)+55, 1
+	const (
+		quietZone       = 10
+		symbolSize      = 11 // 1 symbol = 6 units of 1,2,3, or 4 totalling 11
+		startSize       = symbolSize
+		checkSize       = symbolSize
+		stopPatternSize = 13
+	)
+	width := 2*quietZone + startSize + len(runes)*symbolSize + checkSize + stopPatternSize
+	height := 1
 	img := image.NewGray16(image.Rectangle{image.Point{0, 0}, image.Point{width, height}})
 
 	var (
@@ -64,71 +66,42 @@ func Encode(text string) (Code128, error) {
 		cksm  *Checksum
 	)
 
-	{ // draw quiet space
-		for i := 0; i < 10; i++ {
-			img.SetGray16(xPos, 0, color.White)
-			xPos++
-		}
+	for i := 0; i < 10; i++ { // quiet space start
+		img.SetGray16(xPos, 0, color.White)
+		xPos++
 	}
 
-	{ // draw start symbol
-		table = determineTable(runes, LookupNone)
-		var startSym int
-		switch table {
-		case LookupA:
-			startSym = START_A
-		case LookupB:
-			startSym = START_B
-		case LookupC:
-			startSym = START_C
-		}
-		bits := Bitpattern[startSym-SpecialOffset]
-		drawBits(img, bits[3:9], &xPos)
-		cksm = NewChecksum(startSym - SpecialOffset)
-	}
+	table = determineTable(runes, LookupNone)
+	startSym := []int{START_A, START_B, START_C}[table]
+	bits := Bitpattern[startSym-SpecialOffset]
+	drawBits(img, bits[3:9], &xPos)
+	cksm = NewChecksum(startSym - SpecialOffset)
 
-	{ // draw data symbols
-		for idx, r := range runes {
-			nextTable := determineTable(runes[idx:], table)
+	for idx, r := range runes {
+		nextTable := determineTable(runes[idx:], table)
 
-			if nextTable != table {
-				// TODO: Shift B/Shift A
-				var code int
-				switch nextTable {
-				case LookupA:
-					code = CODE_A
-				case LookupB:
-					code = CODE_B
-				case LookupC:
-					code = CODE_C
-				}
-				bits := Bitpattern[code-SpecialOffset]
-				drawBits(img, bits[3:9], &xPos)
-				cksm.Add(code - SpecialOffset)
-
-				table = nextTable
-			}
-
-			bits, val := must2(lookup(r, table))
+		if nextTable != table {
+			// TODO: Shift B/Shift A
+			code := []int{CODE_A, CODE_B, CODE_C}[nextTable]
+			bits := Bitpattern[code-SpecialOffset]
 			drawBits(img, bits[3:9], &xPos)
-			cksm.Add(val)
+			cksm.Add(code - SpecialOffset)
+			table = nextTable
 		}
-	}
 
-	{ // draw checksum
-		bits := Bitpattern[cksm.Sum()]
+		bits, val := must2(lookup(r, table))
 		drawBits(img, bits[3:9], &xPos)
+		cksm.Add(val)
 	}
 
-	{ // draw stop pattern
-		drawBits(img, []int{2, 3, 3, 1, 1, 1, 2}, &xPos)
-	}
+	bits = Bitpattern[cksm.Sum()]
+	drawBits(img, bits[3:9], &xPos)
 
-	{ // draw quiet space
-		for i := 0; i < 10; i++ {
-			img.SetGray16(xPos, 0, color.White)
-			xPos++
-		}
+	drawBits(img, StopPattern, &xPos)
+
+	for i := 0; i < 10; i++ {
+		img.SetGray16(xPos, 0, color.White)
+		xPos++
 	}
 
 	return Code128{img}, nil

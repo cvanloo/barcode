@@ -190,6 +190,8 @@ const (
 	LookupC    TableIndex = 2
 )
 
+var StopPattern = []int{2, 3, 3, 1, 1, 1, 2}
+
 /*
  * Decoding Tables
  */
