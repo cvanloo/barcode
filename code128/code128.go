@@ -16,18 +16,15 @@ type Code128 struct {
 func (c Code128) Scale(width, height int) (image.Image, error) {
 	oldWidth := c.Bounds().Dx()
 	if width < oldWidth {
-		return nil, errors.New("new width too small, unable to shrink image")
+		return nil, errors.New("unable to shrink image, new width too small")
 	}
 
 	scaledImage := image.NewGray16(image.Rectangle{image.Point{0, 0}, image.Point{width, height}})
 
 	// scale width
-	const qzMin = 10
-	availWidth := width - 2*qzMin // reserve minimum space for quiet zones
-	scale := availWidth / oldWidth
-	qz := qzMin + (availWidth % oldWidth) / 2
-
-	for x := 0; x < qz; x++ { // draw quiet zone start
+	scale := width / oldWidth
+	qz := (width % oldWidth) / 2
+	for x := 0; x < qz; x++ { // extend quiet zone start
 		scaledImage.SetGray16(x, 0, color.White)
 	}
 	for x := 0; x < oldWidth; x++ { // copy pixels, scale them
@@ -35,7 +32,7 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 			scaledImage.SetGray16(qz+s+x*scale, 0, c.Gray16At(x, 0))
 		}
 	}
-	for x := 0; x < qz; x++ { // draw quiet zone end
+	for x := 0; x < qz; x++ { // extend quiet zone end
 		scaledImage.SetGray16(width-x-1, 0, color.White)
 	}
 
@@ -57,8 +54,8 @@ func Encode(text string) (Code128, error) {
 	// - the six modules making up a symbol have a total size of 11 units
 	// - we define a unit as 1 pixel
 	//
-	// start 11px + 11px*len + checksum 11px + stop 13px = 35px
-	width, height := 11*len(runes)+35, 1
+	// quiet 10px + start 11px + 11px*len + checksum 11px + stop 13px + quiet 10px = 55px
+	width, height := 11*len(runes)+55, 1
 	img := image.NewGray16(image.Rectangle{image.Point{0, 0}, image.Point{width, height}})
 
 	var (
@@ -66,6 +63,13 @@ func Encode(text string) (Code128, error) {
 		table TableIndex
 		cksm  *Checksum
 	)
+
+	{ // draw quiet space
+		for i := 0; i < 10; i++ {
+			img.SetGray16(xPos, 0, color.White)
+			xPos++
+		}
+	}
 
 	{ // draw start symbol
 		table = determineTable(runes, LookupNone)
@@ -118,6 +122,13 @@ func Encode(text string) (Code128, error) {
 
 	{ // draw stop pattern
 		drawBits(img, []int{2, 3, 3, 1, 1, 1, 2}, &xPos)
+	}
+
+	{ // draw quiet space
+		for i := 0; i < 10; i++ {
+			img.SetGray16(xPos, 0, color.White)
+			xPos++
+		}
 	}
 
 	return Code128{img}, nil
