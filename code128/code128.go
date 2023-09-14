@@ -47,7 +47,7 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 
 type barcode struct {
 	modules []int
-	width int
+	width   int
 }
 
 func (c *barcode) add(widths ...int) {
@@ -63,7 +63,7 @@ func (c *barcode) draw() Code128 {
 	xPos := 0
 	for i, module := range c.modules {
 		for j := 0; j < module; j++ {
-			if i % 2 == 0 {
+			if i%2 == 0 {
 				img.SetGray16(xPos, 0, color.White)
 			} else {
 				img.SetGray16(xPos, 0, color.Black)
@@ -80,7 +80,7 @@ func Encode(text string) (Code128, error) {
 	var (
 		table TableIndex
 		cksm  *Checksum
-		c128 = &barcode{}
+		c128  = &barcode{}
 	)
 
 	c128.add(QuietSpace)
@@ -196,7 +196,7 @@ func parseCNum(rs [2]rune) int {
 	d2 := rs[1]
 	v1 := int(d1) - 0x30
 	v2 := int(d2) - 0x30
-	num := v1*10+v2
+	num := v1*10 + v2
 	return num
 }
 
@@ -215,14 +215,12 @@ type Checksum struct {
 }
 
 func NewChecksum(initial int) *Checksum {
-	fmt.Printf("INIT: %d\n", initial)
 	return &Checksum{Value: initial, Idx: 1}
 }
 
 func (c *Checksum) Add(val int) {
 	c.Value += val * c.Idx
 	c.Idx++
-	fmt.Printf("NEW: %d TOTAL: %d\n", val, c.Value)
 }
 
 func (c *Checksum) Sum() int {
@@ -287,8 +285,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 	}()
 
 	staSym := DecodeTableA[sta[0]][sta[1]][sta[2]][sta[3]][sta[4]][sta[5]]
-	_, val := lookup(staSym, LookupA) // TODO: make a value table for value lookup?
-	cksm := NewChecksum(val)
+	cksm := NewChecksum(SymbolValue(staSym, LookupA))
 
 	var tidx TableIndex
 	switch staSym {
@@ -301,7 +298,6 @@ func Decode(img image.Image) (bs []rune, err error) {
 	case START_C:
 		tidx = LookupC
 	}
-
 
 	decodeTables := [][][][][][][]int{
 		DecodeTableA,
@@ -316,8 +312,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 		tidx := activeTables[shift]
 		shift = 0
 		sym := decodeTables[tidx][d[current-5]][d[current-4]][d[current-3]][d[current-2]][d[current-1]][d[current-0]]
-		_, val := lookup(sym, tidx) // TODO: make a value table for value lookup?
-		cksm.Add(val)
+		cksm.Add(SymbolValue(sym, tidx))
 
 		switch sym {
 		default:
@@ -341,13 +336,20 @@ func Decode(img image.Image) (bs []rune, err error) {
 			} else {
 				panic("unreachable (hopefully)")
 			}
-		case FNC3: fallthrough
-		case FNC2: fallthrough
-		case FNC1: fallthrough
-		case START_A: fallthrough
-		case START_B: fallthrough
-		case START_C: fallthrough
-		case STOP: fallthrough
+		case FNC3:
+			fallthrough
+		case FNC2:
+			fallthrough
+		case FNC1:
+			fallthrough
+		case START_A:
+			fallthrough
+		case START_B:
+			fallthrough
+		case START_C:
+			fallthrough
+		case STOP:
+			fallthrough
 		case REVERSE_STOP:
 			return bs, fmt.Errorf("symbol %+v invalid in this position", sym)
 		}
@@ -356,28 +358,13 @@ func Decode(img image.Image) (bs []rune, err error) {
 	}
 
 	cksmSym := DecodeTableA[c[0]][c[1]][c[2]][c[3]][c[4]][c[5]]
-	_, cksmVal := lookup(cksmSym, LookupA) // TODO: make a value table for value lookup?
-
-	total := cksm.Value
+	cksmVal := SymbolValue(cksmSym, LookupA)
 	cksmOK := cksm.Sum() == cksmVal
-
-	fmt.Printf("Barcode Sym: %v, Barcode Val: %v, Want Val (%d): %v\n", cksmSym, cksmVal, total, cksm.Value)
-
 	if !cksmOK {
 		return bs, fmt.Errorf("invalid checksum: barcode contains: %d, calculated: %d", cksmVal, cksm.Value)
 	}
 
 	return bs, nil
-}
-
-func symbolValue(sym int, table TableIndex) int {
-	if sym > 0x7F {
-		return sym - SpecialOffset
-	}
-	if sym < 0x20 || table == LookupC {
-		return sym
-	}
-	return sym - 0x20
 }
 
 func modules(img image.Image) (widths []int, err error) {

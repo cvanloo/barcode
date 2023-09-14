@@ -183,13 +183,29 @@ var Bitpattern = [][]int{
 	{START_C, START_C, START_C, 2, 1, 1, 2, 3, 2},
 }
 
+func SymbolValue(sym int, table TableIndex) int {
+	if sym > 0x7F {
+		return sym - SpecialOffset
+	}
+	if sym < 0x7F && table == LookupC {
+		return sym
+	}
+	if sym < 0x20 {
+		return sym + 0x40
+	}
+	if sym > 0x20 && sym < 0x7F {
+		return sym - 0x20
+	}
+	panic("did I forget a case?")
+}
+
 type TableIndex int
 
 const (
-	LookupNone TableIndex = -1
-	LookupA    TableIndex = 0
-	LookupB    TableIndex = 1
-	LookupC    TableIndex = 2
+	LookupNone  TableIndex = -1
+	LookupA     TableIndex = 0
+	LookupB     TableIndex = 1
+	LookupC     TableIndex = 2
 	LookupShift TableIndex = 3
 )
 
@@ -2033,4 +2049,3 @@ var DecodeTableC = [][][][][][]int{
 		},
 	},
 }
-
