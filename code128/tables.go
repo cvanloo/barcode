@@ -184,19 +184,30 @@ var Bitpattern = [][]int{
 }
 
 func SymbolValue(sym int, table TableIndex) int {
-	if sym > 0x7F {
-		return sym - SpecialOffset
+	switch table {
+	case LookupA:
+		if sym < 0x20 /* Special ASCII */ {
+			return sym + 0x40
+		}
+		if sym > 0x7F /* Special Code-128 */ {
+			return sym - SpecialOffset
+		}
+		return sym - 0x20 // normal ASCII
+	case LookupB:
+		if sym < 0x20 /* Special ASCII */ {
+			panic("symbol not in table B")
+		}
+		if sym > 0x7F /* Special Code-128 */ {
+			return sym - SpecialOffset
+		}
+		return sym - 0x20 // normal ASCII
+	case LookupC:
+		if sym > 0x7F /* Special Code-128 */ {
+			return sym - SpecialOffset
+		}
+		return sym // literal number
 	}
-	if sym < 0x7F && table == LookupC {
-		return sym
-	}
-	if sym < 0x20 {
-		return sym + 0x40
-	}
-	if sym > 0x20 && sym < 0x7F {
-		return sym - 0x20
-	}
-	panic("did I forget a case?")
+	panic("invalid table index")
 }
 
 type TableIndex int

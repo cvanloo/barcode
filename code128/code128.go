@@ -280,7 +280,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 			for i := -5; current+i < len(d) && i <= 0; i++ {
 				seq += fmt.Sprintf("%d", d[current+i])
 			}
-			err = fmt.Errorf("invalid sequence: %s", seq)
+			err = fmt.Errorf("panic at sequence: %s: %+v", seq, r)
 		}
 	}()
 
