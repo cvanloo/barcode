@@ -89,7 +89,7 @@ func Encode(text string) (Code128, error) {
 	startSym := []int{START_A, START_B, START_C}[table]
 	bits := Bitpattern[startSym-SpecialOffset]
 	c128.add(bits[3:9]...)
-	cksm = NewChecksum(startSym - SpecialOffset)
+	cksm = NewChecksum(SymbolValue(startSym, table))
 
 	activeTables := [2]TableIndex{0: table}
 	shift := 0
@@ -99,7 +99,7 @@ func Encode(text string) (Code128, error) {
 			code := []int{CODE_A, CODE_B, CODE_C, SHIFT}[nextTable]
 			bits := Bitpattern[code-SpecialOffset]
 			c128.add(bits[3:9]...)
-			cksm.Add(code - SpecialOffset)
+			cksm.Add(SymbolValue(code, table))
 
 			activeTables[shift] = nextTable
 			shift = btoi(nextTable == LookupShift)
