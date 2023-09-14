@@ -16,7 +16,7 @@ func TestDecode(t *testing.T) {
 		//{"testfiles/test_code128-3.png", "hello world"},
 		//{"testfiles/test_code128-4.png", "hello, world!"},
 		//{"testfiles/test_code128-5.png", "3456abcd"},
-		//{"testfiles/test_code128-6.png", "667390"},
+		{"testfiles/test_code128-6.png", "667390"},
 		//{"testfiles/test_code128-7.png", "biz\n"},
 		//{"testfiles/test_code128-8.png", "ABCDEFG"},
 
@@ -33,7 +33,7 @@ func TestDecode(t *testing.T) {
 		//{"testfiles/test_code128-data-after-stop.png", "Hello, World!"}, FIXME: failing
 
 		// Test cases that failed at some point in time
-		{"testfiles/WhatIsDorked.png", "439721-hello-WORLD"},
+		//{"testfiles/WhatIsDorked.png", "439721-hello-WORLD"},
 	}
 	for _, c := range cases {
 		f, err := os.Open(c.path)

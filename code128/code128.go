@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"reflect"
 )
 
 type Code128 struct {
@@ -216,12 +215,14 @@ type Checksum struct {
 }
 
 func NewChecksum(initial int) *Checksum {
+	fmt.Printf("INIT: %d\n", initial)
 	return &Checksum{Value: initial, Idx: 1}
 }
 
 func (c *Checksum) Add(val int) {
 	c.Value += val * c.Idx
 	c.Idx++
+	fmt.Printf("NEW: %d TOTAL: %d\n", val, c.Value)
 }
 
 func (c *Checksum) Sum() int {
@@ -258,7 +259,7 @@ func btoi(b bool) int {
 // BarColorTolerance.
 var BarColorTolerance = 0.7
 
-func Decode(img image.Image) (bs []byte, err error) {
+func Decode(img image.Image) (bs []rune, err error) {
 	widths, err := modules(img)
 	if err != nil {
 		return nil, err
@@ -269,90 +270,114 @@ func Decode(img image.Image) (bs []byte, err error) {
 	_, _, _ = qs, qe, stp
 
 	if len(d)%6 != 0 {
+		// TODO: ignore stuff before start and after stop symbol
 		return nil, errors.New("invalid data segment")
 	}
 
-	decodeTable := DecodeTableA
-	charTable := CharTableA
-	current, posMul := 5, 1
+	current := 5
 
 	defer func() {
 		if r := recover(); r != nil {
-			table := "?"
-			if reflect.ValueOf(decodeTable).Pointer() == reflect.ValueOf(DecodeTableA).Pointer() {
-				table = "A"
-			}
-			if reflect.ValueOf(decodeTable).Pointer() == reflect.ValueOf(DecodeTableB).Pointer() {
-				table = "B"
-			}
-			if reflect.ValueOf(decodeTable).Pointer() == reflect.ValueOf(DecodeTableC).Pointer() {
-				table = "C"
-			}
 			seq := ""
 			for i := -5; current+i < len(d) && i <= 0; i++ {
 				seq += fmt.Sprintf("%d", d[current+i])
 			}
-			err = fmt.Errorf("table %s: invalid sequence: %s", table, seq)
+			err = fmt.Errorf("invalid sequence: %s", seq)
 		}
 	}()
 
-	staSym := decodeTable[sta[0]][sta[1]][sta[2]][sta[3]][sta[4]][sta[5]]
+	staSym := DecodeTableA[sta[0]][sta[1]][sta[2]][sta[3]][sta[4]][sta[5]]
+	_, val := lookup(staSym, LookupA) // TODO: make a value table for value lookup?
+	cksm := NewChecksum(val)
+
+	var tidx TableIndex
 	switch staSym {
 	default:
-		return nil, fmt.Errorf("invalid start symbol: %s -- %+v", charTable[staSym], sta)
-	case SYM_START_A:
-		decodeTable = DecodeTableA
-		charTable = CharTableA
-	case SYM_START_B:
-		decodeTable = DecodeTableB
-		charTable = CharTableB
-	case SYM_START_C:
-		decodeTable = DecodeTableC
-		charTable = CharTableC
+		return nil, fmt.Errorf("invalid start symbol: %d", sta)
+	case START_A:
+		tidx = LookupA
+	case START_B:
+		tidx = LookupB
+	case START_C:
+		tidx = LookupC
 	}
 
-	checksum := staSym
+
+	decodeTables := [][][][][][][]int{
+		DecodeTableA,
+		DecodeTableB,
+		DecodeTableC,
+	}
+
+	activeTables := [2]TableIndex{0: tidx}
+	shift := 0
 
 	for current < len(d) {
-		sym := decodeTable[d[current-5]][d[current-4]][d[current-3]][d[current-2]][d[current-1]][d[current-0]]
-		checksum += sym * posMul
+		tidx := activeTables[shift]
+		shift = 0
+		sym := decodeTables[tidx][d[current-5]][d[current-4]][d[current-3]][d[current-2]][d[current-1]][d[current-0]]
+		_, val := lookup(sym, tidx) // TODO: make a value table for value lookup?
+		cksm.Add(val)
 
 		switch sym {
 		default:
-			bs = append(bs, []byte(charTable[sym])...)
-		case SYM_CODE_A:
-			decodeTable = DecodeTableA
-			charTable = CharTableA
-		case SYM_CODE_B:
-			decodeTable = DecodeTableB
-			charTable = CharTableB
-		case SYM_CODE_C:
-			decodeTable = DecodeTableC
-			charTable = CharTableC
-		case SYM_FNC3: fallthrough
-		case SYM_FNC2: fallthrough
-		case SYM_SHIFT_B: fallthrough
-		case SYM_FNC1: fallthrough
-		case SYM_START_A: fallthrough
-		case SYM_START_B: fallthrough
-		case SYM_START_C: fallthrough
-		case SYM_STOP: fallthrough
-		case SYM_REVERSE_STOP:
-			return bs, fmt.Errorf("symbol %+v (%s) invalid in this position", sym, charTable[sym])
+			if tidx == LookupC {
+				bs = append(bs, []rune(fmt.Sprintf("%02d", sym))...)
+			} else {
+				bs = append(bs, rune(sym))
+			}
+		case CODE_A:
+			activeTables[0] = LookupA
+		case CODE_B:
+			activeTables[0] = LookupB
+		case CODE_C:
+			activeTables[0] = LookupC
+		case SHIFT:
+			shift = 1
+			if tidx == LookupA {
+				activeTables[shift] = LookupB
+			} else if tidx == LookupB {
+				activeTables[shift] = LookupA
+			} else {
+				panic("unreachable (hopefully)")
+			}
+		case FNC3: fallthrough
+		case FNC2: fallthrough
+		case FNC1: fallthrough
+		case START_A: fallthrough
+		case START_B: fallthrough
+		case START_C: fallthrough
+		case STOP: fallthrough
+		case REVERSE_STOP:
+			return bs, fmt.Errorf("symbol %+v invalid in this position", sym)
 		}
 
-		posMul++
 		current += 6
 	}
 
-	checksum = checksum % 103
-	cksmVal := DecodeTableA[c[0]][c[1]][c[2]][c[3]][c[4]][c[5]]
-	cksmOK := cksmVal == checksum
+	cksmSym := DecodeTableA[c[0]][c[1]][c[2]][c[3]][c[4]][c[5]]
+	_, cksmVal := lookup(cksmSym, LookupA) // TODO: make a value table for value lookup?
+
+	total := cksm.Value
+	cksmOK := cksm.Sum() == cksmVal
+
+	fmt.Printf("Barcode Sym: %v, Barcode Val: %v, Want Val (%d): %v\n", cksmSym, cksmVal, total, cksm.Value)
+
 	if !cksmOK {
-		return bs, fmt.Errorf("invalid checksum: want: %d, got: %d", cksmVal, checksum)
+		return bs, fmt.Errorf("invalid checksum: barcode contains: %d, calculated: %d", cksmVal, cksm.Value)
 	}
 
 	return bs, nil
+}
+
+func symbolValue(sym int, table TableIndex) int {
+	if sym > 0x7F {
+		return sym - SpecialOffset
+	}
+	if sym < 0x20 || table == LookupC {
+		return sym
+	}
+	return sym - 0x20
 }
 
 func modules(img image.Image) (widths []int, err error) {
@@ -423,7 +448,7 @@ func modules(img image.Image) (widths []int, err error) {
 func reverse(widths []int) (isReversed bool) {
 	startSym := widths[1:7]
 	sym := DecodeTableA[startSym[0]][startSym[1]][startSym[2]][startSym[3]][startSym[4]][startSym[5]]
-	if sym == SYM_REVERSE_STOP {
+	if sym == REVERSE_STOP {
 		isReversed = true
 		for i, j := 0, len(widths)-1; i < j; i, j = i+1, j-1 {
 			widths[i], widths[j] = widths[j], widths[i]
