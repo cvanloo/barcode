@@ -46,68 +46,87 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 	return scaledImage, nil
 }
 
+type barcode struct {
+	modules []int
+	width int
+}
+
+func (c *barcode) add(widths ...int) {
+	for _, width := range widths {
+		c.modules = append(c.modules, width)
+		c.width += width
+	}
+}
+
+func (c *barcode) draw() Code128 {
+	height := 1
+	img := image.NewGray16(image.Rectangle{image.Point{0, 0}, image.Point{c.width, height}})
+	xPos := 0
+	for i, module := range c.modules {
+		for j := 0; j < module; j++ {
+			if i % 2 == 0 {
+				img.SetGray16(xPos, 0, color.White)
+			} else {
+				img.SetGray16(xPos, 0, color.Black)
+			}
+			xPos++
+		}
+	}
+	return Code128{img}
+}
+
 func Encode(text string) (Code128, error) {
 	runes := []rune(text)
 
-	const (
-		quietZone       = 10
-		symbolSize      = 11 // 1 symbol = 6 units of 1,2,3, or 4 totalling 11
-		startSize       = symbolSize
-		checkSize       = symbolSize
-		stopPatternSize = 13
-	)
-	width := 2*quietZone + startSize + len(runes)*symbolSize + checkSize + stopPatternSize
-	height := 1
-	img := image.NewGray16(image.Rectangle{image.Point{0, 0}, image.Point{width, height}})
-
 	var (
-		xPos  int
 		table TableIndex
 		cksm  *Checksum
+		c128 = &barcode{}
 	)
 
-	for i := 0; i < 10; i++ { // quiet space start
-		img.SetGray16(xPos, 0, color.White)
-		xPos++
-	}
+	c128.add(QuietSpace)
 
 	table = determineTable(runes, LookupNone)
 	startSym := []int{START_A, START_B, START_C}[table]
 	bits := Bitpattern[startSym-SpecialOffset]
-	drawBits(img, bits[3:9], &xPos)
+	c128.add(bits[3:9]...)
 	cksm = NewChecksum(startSym - SpecialOffset)
 
-	for idx, r := range runes {
-		nextTable := determineTable(runes[idx:], table)
-
-		if nextTable != table {
-			// TODO: Shift B/Shift A
-			code := []int{CODE_A, CODE_B, CODE_C}[nextTable]
+	activeTables := [2]TableIndex{0: table}
+	shift := 0
+	for len(runes) > 0 {
+		nextTable := determineTable(runes, activeTables[0])
+		if nextTable != activeTables[shift] {
+			code := []int{CODE_A, CODE_B, CODE_C, SHIFT}[nextTable]
 			bits := Bitpattern[code-SpecialOffset]
-			drawBits(img, bits[3:9], &xPos)
+			c128.add(bits[3:9]...)
 			cksm.Add(code - SpecialOffset)
-			table = nextTable
+
+			activeTables[shift] = nextTable
+			shift = btoi(nextTable == LookupShift)
 		}
 
-		bits, val := must2(lookup(r, table))
-		drawBits(img, bits[3:9], &xPos)
+		num := int(runes[0])
+		if activeTables[shift] == LookupC && isCNum(runes) {
+			num = parseCNum([2]rune(runes[0:2]))
+			runes = runes[2:]
+		} else {
+			runes = runes[1:]
+		}
+		bits, val := lookup(num, activeTables[shift])
+		c128.add(bits[3:9]...)
 		cksm.Add(val)
 	}
 
 	bits = Bitpattern[cksm.Sum()]
-	drawBits(img, bits[3:9], &xPos)
+	c128.add(bits[3:9]...)
+	c128.add(StopPattern...)
+	c128.add(QuietSpace)
 
-	drawBits(img, StopPattern, &xPos)
-
-	for i := 0; i < 10; i++ {
-		img.SetGray16(xPos, 0, color.White)
-		xPos++
-	}
-
-	return Code128{img}, nil
+	return c128.draw(), nil
 }
 
-func determineTable(nextText []rune, currentTable TableIndex) TableIndex {
+func determineTable(rs []rune, currentTable TableIndex) TableIndex {
 	// ~$ man 7 ascii
 	isAsciiPrintable := func(r rune) bool {
 		return r >= 0x20 /* space */ && r <= 0x7F /* DEL */
@@ -119,47 +138,76 @@ func determineTable(nextText []rune, currentTable TableIndex) TableIndex {
 		return r >= 0x00 /* NUL */ && r <= 0x1F /* US */
 	}
 
-	// TODO: improve algorithm for more efficient encoding (minimize table switching)
-	//   E.g., Does it make sense to switch to C, or should we just stay in A/B?
-	//   Should we use a Shift B/Shift A or Code B/Code A?
-	if isAsciiPrintable(nextText[0]) {
-		return LookupB
+	isA := func(rs []rune) bool {
+		r := rs[0]
+		if isSpecial(r) {
+			return true
+		}
+		return r >= 0x20 /* space */ && r <= 0x5F /* _ */
 	}
-	if isNumber(nextText[0]) {
-		if len(nextText) > 1 && isNumber(nextText[1]) {
+	isB := func(rs []rune) bool {
+		return isAsciiPrintable(rs[0])
+	}
+	isC := func(rs []rune) bool {
+		if len(rs) < 2 {
+			return false
+		}
+		return isNumber(rs[0]) && isNumber(rs[1])
+	}
+
+	if isC(rs) {
+		if currentTable == LookupC || isC(rs[2:]) {
 			return LookupC
+		}
+	}
+	if isB(rs) {
+		if currentTable == LookupA {
+			if !isB(rs[1:]) {
+				return LookupShift
+			}
 		}
 		return LookupB
 	}
-	if isSpecial(nextText[0]) {
+	if isA(rs) {
+		if currentTable == LookupB {
+			if !isA(rs[1:]) {
+				return LookupShift
+			}
+		}
 		return LookupA
 	}
 
 	panic("unreachable (hopefully)")
 }
 
-func lookup(r rune, table TableIndex) (bits []int, val int, err error) {
-	for i, bits := range Bitpattern {
-		if bits[table] == int(r) {
-			return bits, i, nil
+func isCNum(rs []rune) bool {
+	if len(rs) < 2 {
+		return false
+	}
+	for i := 0; i < 2; i++ {
+		if rs[i] < 0x30 || rs[i] > 0x39 {
+			return false
 		}
 	}
-	return nil, -1, fmt.Errorf("invalid rune %U (`%s') in table %s", r, string(r), string(rune(table+0x41)))
+	return true
 }
 
-func drawBits(img *image.Gray16, bits []int, startX *int) {
-	for i, w := range bits {
-		if i%2 == 0 { // draw bar
-			for j := 0; j < w; j++ {
-				img.SetGray16(*startX+j, 0, color.Black)
-			}
-		} else { // draw space
-			for j := 0; j < w; j++ {
-				img.SetGray16(*startX+j, 0, color.White)
-			}
+func parseCNum(rs [2]rune) int {
+	d1 := rs[0]
+	d2 := rs[1]
+	v1 := int(d1) - 0x30
+	v2 := int(d2) - 0x30
+	num := v1*10+v2
+	return num
+}
+
+func lookup(r int, table TableIndex) (bits []int, val int) {
+	for i, bits := range Bitpattern {
+		if bits[table] == r {
+			return bits, i
 		}
-		*startX += w
 	}
+	panic("unreachable (hopefully)")
 }
 
 type Checksum struct {
@@ -193,6 +241,14 @@ func must2[T1, T2 any](v1 T1, v2 T2, err error) (T1, T2) {
 		panic(err)
 	}
 	return v1, v2
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	} else {
+		return 0
+	}
 }
 
 // BarColorTolerance determines which colors count as a bar.
@@ -273,14 +329,14 @@ func Decode(img image.Image) (bs []byte, err error) {
 		case SYM_CODE_C:
 			decodeTable = DecodeTableC
 			charTable = CharTableC
-		case SYM_FNC3:
-		case SYM_FNC2:
-		case SYM_SHIFT_B:
-		case SYM_FNC1:
-		case SYM_START_A:
-		case SYM_START_B:
-		case SYM_START_C:
-		case SYM_STOP:
+		case SYM_FNC3: fallthrough
+		case SYM_FNC2: fallthrough
+		case SYM_SHIFT_B: fallthrough
+		case SYM_FNC1: fallthrough
+		case SYM_START_A: fallthrough
+		case SYM_START_B: fallthrough
+		case SYM_START_C: fallthrough
+		case SYM_STOP: fallthrough
 		case SYM_REVERSE_STOP:
 			return bs, fmt.Errorf("symbol %+v (%s) invalid in this position", sym, charTable[sym])
 		}

@@ -188,9 +188,12 @@ const (
 	LookupA    TableIndex = 0
 	LookupB    TableIndex = 1
 	LookupC    TableIndex = 2
+	LookupShift TableIndex = 3
 )
 
 var StopPattern = []int{2, 3, 3, 1, 1, 1, 2}
+
+const QuietSpace = 10
 
 /*
  * Decoding Tables
