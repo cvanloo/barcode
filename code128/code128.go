@@ -78,7 +78,7 @@ func Encode(text string) (Code128, error) {
 
 		sym := int(runes[i])
 		if activeTables[shift] == LookupC && isCNum(runes[i:]) {
-			sym = parseCNum([2]rune(runes[i:i+2]))
+			sym = parseCNum([2]rune(runes[i : i+2]))
 			i++ // encode two runes at once
 		}
 		bits, val := lookup(sym, activeTables[shift])
