@@ -93,8 +93,8 @@ func Encode(text string) (Code128, error) {
 
 	activeTables := [2]TableIndex{0: table}
 	shift := 0
-	for len(runes) > 0 {
-		nextTable := determineTable(runes, activeTables[0])
+	for i := 0; i < len(runes); i++ {
+		nextTable := determineTable(runes[i:], activeTables[0])
 		if nextTable != activeTables[shift] {
 			code := []int{CODE_A, CODE_B, CODE_C, SHIFT}[nextTable]
 			bits := Bitpattern[code-SpecialOffset]
@@ -105,14 +105,12 @@ func Encode(text string) (Code128, error) {
 			shift = btoi(nextTable == LookupShift)
 		}
 
-		num := int(runes[0])
-		if activeTables[shift] == LookupC && isCNum(runes) {
-			num = parseCNum([2]rune(runes[0:2]))
-			runes = runes[2:]
-		} else {
-			runes = runes[1:]
+		sym := int(runes[i])
+		if activeTables[shift] == LookupC && isCNum(runes[i:]) {
+			sym = parseCNum([2]rune(runes[i:i+2]))
+			i++ // encode two runes at once
 		}
-		bits, val := lookup(num, activeTables[shift])
+		bits, val := lookup(sym, activeTables[shift])
 		c128.add(bits[3:9]...)
 		cksm.Add(val)
 	}
