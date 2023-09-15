@@ -45,6 +45,55 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 	return scaledImage, nil
 }
 
+func Encode(text string) (Code128, error) {
+	runes := []rune(text)
+
+	var (
+		table TableIndex
+		cksm  *checksum
+		c128  = &barcode{}
+	)
+
+	c128.add(QuietSpace)
+
+	table = determineTable(runes, LookupNone)
+	startSym := []int{START_A, START_B, START_C}[table]
+	bits := Bitpattern[startSym-SpecialOffset]
+	c128.add(bits[3:9]...)
+	cksm = newChecksum(SymbolValue(startSym, table))
+
+	activeTables := [2]TableIndex{0: table}
+	shift := 0
+	for i := 0; i < len(runes); i++ {
+		nextTable := determineTable(runes[i:], activeTables[0])
+		if nextTable != activeTables[shift] {
+			code := []int{CODE_A, CODE_B, CODE_C, SHIFT}[nextTable]
+			bits := Bitpattern[code-SpecialOffset]
+			c128.add(bits[3:9]...)
+			cksm.add(SymbolValue(code, table))
+
+			activeTables[shift] = nextTable
+			shift = btoi(nextTable == LookupShift)
+		}
+
+		sym := int(runes[i])
+		if activeTables[shift] == LookupC && isCNum(runes[i:]) {
+			sym = parseCNum([2]rune(runes[i:i+2]))
+			i++ // encode two runes at once
+		}
+		bits, val := lookup(sym, activeTables[shift])
+		c128.add(bits[3:9]...)
+		cksm.add(val)
+	}
+
+	bits = Bitpattern[cksm.sum()]
+	c128.add(bits[3:9]...)
+	c128.add(StopPattern...)
+	c128.add(QuietSpace)
+
+	return c128.draw(), nil
+}
+
 type barcode struct {
 	modules []int
 	width   int
@@ -72,55 +121,6 @@ func (c *barcode) draw() Code128 {
 		}
 	}
 	return Code128{img}
-}
-
-func Encode(text string) (Code128, error) {
-	runes := []rune(text)
-
-	var (
-		table TableIndex
-		cksm  *Checksum
-		c128  = &barcode{}
-	)
-
-	c128.add(QuietSpace)
-
-	table = determineTable(runes, LookupNone)
-	startSym := []int{START_A, START_B, START_C}[table]
-	bits := Bitpattern[startSym-SpecialOffset]
-	c128.add(bits[3:9]...)
-	cksm = NewChecksum(SymbolValue(startSym, table))
-
-	activeTables := [2]TableIndex{0: table}
-	shift := 0
-	for i := 0; i < len(runes); i++ {
-		nextTable := determineTable(runes[i:], activeTables[0])
-		if nextTable != activeTables[shift] {
-			code := []int{CODE_A, CODE_B, CODE_C, SHIFT}[nextTable]
-			bits := Bitpattern[code-SpecialOffset]
-			c128.add(bits[3:9]...)
-			cksm.Add(SymbolValue(code, table))
-
-			activeTables[shift] = nextTable
-			shift = btoi(nextTable == LookupShift)
-		}
-
-		sym := int(runes[i])
-		if activeTables[shift] == LookupC && isCNum(runes[i:]) {
-			sym = parseCNum([2]rune(runes[i:i+2]))
-			i++ // encode two runes at once
-		}
-		bits, val := lookup(sym, activeTables[shift])
-		c128.add(bits[3:9]...)
-		cksm.Add(val)
-	}
-
-	bits = Bitpattern[cksm.Sum()]
-	c128.add(bits[3:9]...)
-	c128.add(StopPattern...)
-	c128.add(QuietSpace)
-
-	return c128.draw(), nil
 }
 
 func determineTable(rs []rune, currentTable TableIndex) TableIndex {
@@ -182,7 +182,7 @@ func isCNum(rs []rune) bool {
 		return false
 	}
 	for i := 0; i < 2; i++ {
-		if rs[i] < 0x30 || rs[i] > 0x39 {
+		if rs[i] < 0x30 /* 0 */ || rs[i] > 0x39 /* 9 */ { // outside number range
 			return false
 		}
 	}
@@ -190,10 +190,11 @@ func isCNum(rs []rune) bool {
 }
 
 func parseCNum(rs [2]rune) int {
+	const numberOffset = 0x30
 	d1 := rs[0]
 	d2 := rs[1]
-	v1 := int(d1) - 0x30
-	v2 := int(d2) - 0x30
+	v1 := int(d1) - numberOffset
+	v2 := int(d2) - numberOffset
 	num := v1*10 + v2
 	return num
 }
@@ -207,37 +208,22 @@ func lookup(r int, table TableIndex) (bits []int, val int) {
 	panic("unreachable (hopefully)")
 }
 
-type Checksum struct {
-	Value int
-	Idx   int
+type checksum struct {
+	value, mult int
 }
 
-func NewChecksum(initial int) *Checksum {
-	return &Checksum{Value: initial, Idx: 1}
+func newChecksum(initial int) *checksum {
+	return &checksum{value: initial, mult: 1}
 }
 
-func (c *Checksum) Add(val int) {
-	c.Value += val * c.Idx
-	c.Idx++
+func (c *checksum) add(val int) {
+	c.value += val * c.mult
+	c.mult++
 }
 
-func (c *Checksum) Sum() int {
-	c.Value %= 103
-	return c.Value
-}
-
-func must[T any](val T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-	return val
-}
-
-func must2[T1, T2 any](v1 T1, v2 T2, err error) (T1, T2) {
-	if err != nil {
-		panic(err)
-	}
-	return v1, v2
+func (c *checksum) sum() int {
+	c.value %= 103
+	return c.value
 }
 
 func btoi(b bool) int {
@@ -261,9 +247,9 @@ func Decode(img image.Image) (bs []rune, err error) {
 		return nil, err
 	}
 
-	_ = reverse(widths)
+	rev := reverse(widths)
 	qs, sta, d, c, stp, qe := segments(widths)
-	_, _, _ = qs, qe, stp
+	_, _, _, _ = qs, qe, stp, rev
 
 	if len(d)%6 != 0 {
 		// TODO: ignore stuff before start and after stop symbol
@@ -283,19 +269,9 @@ func Decode(img image.Image) (bs []rune, err error) {
 	}()
 
 	staSym := DecodeTableA[sta[0]][sta[1]][sta[2]][sta[3]][sta[4]][sta[5]]
-	cksm := NewChecksum(SymbolValue(staSym, LookupA))
+	cksm := newChecksum(SymbolValue(staSym, LookupA))
 
-	var tidx TableIndex
-	switch staSym {
-	default:
-		return nil, fmt.Errorf("invalid start symbol: %d", sta)
-	case START_A:
-		tidx = LookupA
-	case START_B:
-		tidx = LookupB
-	case START_C:
-		tidx = LookupC
-	}
+	tidx := []TableIndex{LookupA, LookupB, LookupC}[staSym-START_A]
 
 	decodeTables := [][][][][][][]int{
 		DecodeTableA,
@@ -310,7 +286,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 		tidx := activeTables[shift]
 		shift = 0
 		sym := decodeTables[tidx][d[current-5]][d[current-4]][d[current-3]][d[current-2]][d[current-1]][d[current-0]]
-		cksm.Add(SymbolValue(sym, tidx))
+		cksm.add(SymbolValue(sym, tidx))
 
 		switch sym {
 		default:
@@ -357,9 +333,9 @@ func Decode(img image.Image) (bs []rune, err error) {
 
 	cksmSym := DecodeTableA[c[0]][c[1]][c[2]][c[3]][c[4]][c[5]]
 	cksmVal := SymbolValue(cksmSym, LookupA)
-	cksmOK := cksm.Sum() == cksmVal
+	cksmOK := cksm.sum() == cksmVal
 	if !cksmOK {
-		return bs, fmt.Errorf("invalid checksum: barcode contains: %d, calculated: %d", cksmVal, cksm.Value)
+		return bs, fmt.Errorf("invalid checksum: barcode contains: %d, calculated: %d", cksmVal, cksm.value)
 	}
 
 	return bs, nil
