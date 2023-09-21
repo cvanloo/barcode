@@ -59,14 +59,19 @@ func TestDecode(t *testing.T) {
 }
 
 func TestEncode(t *testing.T) {
+	// TODO: make a decode that returns an array of symbols, so that we can
+	// verify that we get the symbols we expect, like []int{START_A, \026, \025, SHIFT, 'h', ...}
 	cases := []string{
 		"Hello, World!",
-		"11223467",
+		"11223467", // should encode all in CODE_C
 		"\026\025",
 		"hello",
-		"112269420",
+		"112269420", // odd number of digits, can't use CODE_C for everything
 		"yoyoyoyo",
 		"439721-hello-WORLD",
+		"hello\026world", // should encode a SHIFT (START_B ... SHIFT(A) ...)
+		"\026\025h\006",  // should encode a SHIFT (START_A ... SHIFT(B) ...)
+		"\026\025H\006",  // should encode everything in CODE_A
 	}
 
 	for _, c := range cases {
@@ -84,5 +89,4 @@ func TestEncode(t *testing.T) {
 			t.Errorf("got: `%s', want: `%s'", string(bs), c)
 		}
 	}
-
 }

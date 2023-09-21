@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"runtime"
 )
 
 type Code128 struct {
@@ -56,23 +57,27 @@ func Encode(text string) (Code128, error) {
 	c128.add(QuietSpace)
 
 	table = determineTable(runes, LookupNone)
-	startSym := [...]int{START_A-SpecialOffset, START_B-SpecialOffset, START_C-SpecialOffset}[table]
-	bits := Bitpattern[startSym]
-	c128.add(ModuleBits(bits)...)
+	startSym := [...]int{START_A - SpecialOffset, START_B - SpecialOffset, START_C - SpecialOffset}[table]
+	c128.add(ModuleBits(Bitpattern[startSym])...)
 	cksm = newChecksum(startSym)
 
 	activeTables := [2]TableIndex{0: table}
-	shift := 0
 	for i := 0; i < len(runes); i++ {
+		shift := 0
 		nextTable := determineTable(runes[i:], activeTables[0])
-		if nextTable != activeTables[shift] {
-			code := [...]int{CODE_A-SpecialOffset, CODE_B-SpecialOffset, CODE_C-SpecialOffset, SHIFT-SpecialOffset}[nextTable]
+		if nextTable != activeTables[0] {
+			code := [...]int{CODE_A - SpecialOffset, CODE_B - SpecialOffset, CODE_C - SpecialOffset, SHIFT - SpecialOffset}[nextTable]
 			bits := Bitpattern[code]
 			c128.add(ModuleBits(bits)...)
 			cksm.add(code)
 
-			activeTables[shift] = nextTable
-			shift = btoi(nextTable == LookupShift)
+			if nextTable == LookupShift {
+				assert(activeTables[0] == 0 || activeTables[0] == 1, "invalid shift")
+				shift = 1
+				activeTables[shift] = [...]TableIndex{LookupB, LookupA}[activeTables[0]]
+			} else {
+				activeTables[0] = nextTable
+			}
 		}
 
 		sym := int(runes[i])
@@ -85,9 +90,8 @@ func Encode(text string) (Code128, error) {
 		cksm.add(val)
 	}
 
-	bits = Bitpattern[cksm.sum()]
-	c128.add(ModuleBits(bits)...)
-	c128.add(StopPattern[:]...)
+	c128.add(ModuleBits(Bitpattern[cksm.sum()])...)
+	c128.add(StopPattern...)
 	c128.add(QuietSpace)
 
 	return c128.draw(), nil
@@ -199,12 +203,13 @@ func parseCNum(rs [2]rune) int {
 }
 
 func lookup(r int, table TableIndex) (bits [9]int, val int) {
+	assert(table >= 0 && table <= 2, "invalid table index")
 	for i, bits := range Bitpattern {
 		if bits[table] == r {
 			return bits, i
 		}
 	}
-	panic("unreachable (hopefully)")
+	panic(fmt.Sprintf("unreachable: table %d: rune not found: %U `%s'", table, rune(r), string(rune(r))))
 }
 
 type checksum struct {
@@ -223,14 +228,6 @@ func (c *checksum) add(val int) {
 func (c *checksum) sum() int {
 	c.value %= 103
 	return c.value
-}
-
-func btoi(b bool) int {
-	if b {
-		return 1
-	} else {
-		return 0
-	}
 }
 
 // BarColorTolerance determines which colors count as a bar.
@@ -268,7 +265,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 	}()
 
 	staSym := DecodeTableA[sta[0]][sta[1]][sta[2]][sta[3]][sta[4]][sta[5]]
-	cksm := newChecksum(staSym-SpecialOffset)
+	cksm := newChecksum(staSym - SpecialOffset)
 
 	decodeTables := [...]DecodeTable{DecodeTableA, DecodeTableB, DecodeTableC}
 
@@ -278,7 +275,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 
 	for current < len(d) {
 		tidx := activeTables[shift]
-		shift = 0
+		shift = 0 // reset shift after decoding one symbol
 		sym := decodeTables[tidx][d[current-5]][d[current-4]][d[current-3]][d[current-2]][d[current-1]][d[current-0]]
 		cksm.add(SymbolValue(sym, tidx))
 
@@ -296,14 +293,9 @@ func Decode(img image.Image) (bs []rune, err error) {
 		case CODE_C:
 			activeTables[0] = LookupC
 		case SHIFT:
+			assert(tidx == 0 || tidx == 1, "invalid shift")
 			shift = 1
-			if tidx == LookupA {
-				activeTables[shift] = LookupB
-			} else if tidx == LookupB {
-				activeTables[shift] = LookupA
-			} else {
-				panic("unreachable (hopefully)")
-			}
+			activeTables[shift] = [...]TableIndex{LookupB, LookupA}[tidx]
 		case FNC3:
 			fallthrough
 		case FNC2:
@@ -420,4 +412,11 @@ func segments(widths []int) (quietStart int, startSym []int, data []int, checkSy
 	stopPat = widths[len(widths)-8 : len(widths)-1]
 	quietEnd = widths[len(widths)-1]
 	return
+}
+
+func assert(v bool, msg string) {
+	if !v {
+		pc, f, l, _ := runtime.Caller(1)
+		panic(fmt.Sprintf("assertion in %s[%s:%d] failed: %s", runtime.FuncForPC(pc).Name(), f, l, msg))
+	}
 }

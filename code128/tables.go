@@ -224,7 +224,7 @@ const (
 	LookupShift TableIndex = 3
 )
 
-var StopPattern = [...]int{2, 3, 3, 1, 1, 1, 2}
+var StopPattern = []int{2, 3, 3, 1, 1, 1, 2}
 
 const QuietSpace = 10
 
