@@ -162,6 +162,9 @@ func determineTable(rs []rune, currentTable TableIndex) TableIndex {
 	}
 	if isB(rs) {
 		if currentTable == LookupA {
+			if isA(rs) {
+				return LookupA
+			}
 			if !isB(rs[1:]) {
 				return LookupShift
 			}
@@ -237,10 +240,10 @@ func (c *checksum) sum() int {
 // BarColorTolerance.
 var BarColorTolerance = 0.7
 
-func Decode(img image.Image) (bs []rune, err error) {
+func Decode(img image.Image) (bs []rune, syms []int, err error) {
 	widths, err := modules(img)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	rev := reverse(widths)
@@ -249,7 +252,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 
 	if len(d)%6 != 0 {
 		// TODO: ignore stuff before start and after stop symbol
-		return nil, errors.New("invalid data segment")
+		return nil, nil, errors.New("invalid data segment")
 	}
 
 	current := 5
@@ -265,6 +268,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 	}()
 
 	staSym := DecodeTableA[sta[0]][sta[1]][sta[2]][sta[3]][sta[4]][sta[5]]
+	syms = append(syms, staSym)
 	cksm := newChecksum(staSym - SpecialOffset)
 
 	decodeTables := [...]DecodeTable{DecodeTableA, DecodeTableB, DecodeTableC}
@@ -277,6 +281,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 		tidx := activeTables[shift]
 		shift = 0 // reset shift after decoding one symbol
 		sym := decodeTables[tidx][d[current-5]][d[current-4]][d[current-3]][d[current-2]][d[current-1]][d[current-0]]
+		syms = append(syms, sym)
 		cksm.add(SymbolValue(sym, tidx))
 
 		switch sym {
@@ -311,20 +316,21 @@ func Decode(img image.Image) (bs []rune, err error) {
 		case STOP:
 			fallthrough
 		case REVERSE_STOP:
-			return bs, fmt.Errorf("symbol %+v invalid in this position", sym)
+			return bs, syms, fmt.Errorf("symbol %+v invalid in this position", sym)
 		}
 
 		current += 6
 	}
 
 	cksmSym := DecodeTableA[c[0]][c[1]][c[2]][c[3]][c[4]][c[5]]
+	syms = append(syms, cksmSym)
 	cksmVal := SymbolValue(cksmSym, LookupA)
 	cksmOK := cksm.sum() == cksmVal
 	if !cksmOK {
-		return bs, fmt.Errorf("invalid checksum: barcode contains: %d, calculated: %d", cksmVal, cksm.value)
+		return bs, syms, fmt.Errorf("invalid checksum: barcode contains: %d, calculated: %d", cksmVal, cksm.value)
 	}
 
-	return bs, nil
+	return bs, syms, nil
 }
 
 func modules(img image.Image) (widths []int, err error) {

@@ -46,7 +46,7 @@ func TestDecode(t *testing.T) {
 			t.Error(err)
 			continue
 		}
-		bs, err := Decode(img)
+		bs, _, err := Decode(img)
 		if err != nil {
 			t.Error(err)
 		}
@@ -59,8 +59,6 @@ func TestDecode(t *testing.T) {
 }
 
 func TestEncode(t *testing.T) {
-	// TODO: make a decode that returns an array of symbols, so that we can
-	// verify that we get the symbols we expect, like []int{START_A, \026, \025, SHIFT, 'h', ...}
 	cases := []string{
 		"Hello, World!",
 		"11223467", // should encode all in CODE_C
@@ -80,13 +78,55 @@ func TestEncode(t *testing.T) {
 			t.Errorf("failed to encode `%s': %v", c, err)
 			continue
 		}
-		bs, err := Decode(img)
+		bs, _, err := Decode(img)
 		if err != nil {
 			t.Errorf("failed to decode `%s': %v", c, err)
 			continue
 		}
 		if string(bs) != c {
 			t.Errorf("got: `%s', want: `%s'", string(bs), c)
+		}
+	}
+}
+
+func TestEncodeSyms(t *testing.T) {
+	cases := []struct{
+		text string
+		syms []int
+	}{
+		{"Hello, World!", []int{START_B, 'H', 'e', 'l', 'l', 'o', ',', ' ', 'W', 'o', 'r', 'l', 'd', '!', 12}},
+		{"11223467", []int{START_C, 11, 22, 34, 67, 47}},
+		{"\026\025", []int{START_A, 026, 025, 82}},
+		{"hello", []int{START_B, 'h', 'e', 'l', 'l', 'o', 37}},
+		{"112269420", []int{START_C, 11, 22, 69, 42, CODE_B, '0', 133}},
+		{"yoyoyoyo", []int{START_B, 'y', 'o', 'y', 'o', 'y', 'o', 'y', 'o', 50}},
+		{"439721-hello-WORLD", []int{START_C, 43, 97, 21, CODE_B, '-', 'h', 'e', 'l', 'l', 'o', '-', 'W', 'O', 'R', 'L', 'D', 39}},
+		{"hello\026world", []int{START_B, 'h', 'e', 'l', 'l', 'o', SHIFT, 026, 'w', 'o', 'r', 'l', 'd', 59}},
+		{"\026\025h\006", []int{START_A, 026, 025, SHIFT, 'h', 06, 87}},
+		{"\026\025H\006", []int{START_A, 026, 025, 'H', 06, 70}},
+	}
+
+	for _, c := range cases {
+		img, err := Encode(c.text)
+		if err != nil {
+			t.Errorf("failed to encode `%s': %v", c.text, err)
+			continue
+		}
+		bs, syms, err := Decode(img)
+		if err != nil {
+			t.Errorf("failed to decode `%s': %v", c.text, err)
+			continue
+		}
+		if string(bs) != c.text {
+			t.Errorf("got: `%s', want: `%s'", string(bs), c.text)
+		}
+		if len(c.syms) != len(syms) {
+			t.Errorf("got: %v, want: %v\n", syms, c.syms)
+		}
+		for i := range c.syms {
+			if c.syms[i] != syms[i] {
+				t.Errorf("at index %d: got: %U (`%s'), want: %U (`%s')", i, rune(syms[i]), string(rune(syms[i])), rune(c.syms[i]), string(rune(c.syms[i])))
+			}
 		}
 	}
 }
