@@ -46,12 +46,11 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 }
 
 func Encode(text string) (Code128, error) {
-	runes := []rune(text)
-
 	var (
 		table TableIndex
 		cksm  *checksum
 		c128  = &barcode{}
+		runes = []rune(text)
 	)
 
 	c128.add(QuietSpace)
@@ -59,7 +58,7 @@ func Encode(text string) (Code128, error) {
 	table = determineTable(runes, LookupNone)
 	startSym := []int{START_A, START_B, START_C}[table]
 	bits := Bitpattern[startSym-SpecialOffset]
-	c128.add(bits[3:9]...)
+	c128.add(ModuleBits(bits)...)
 	cksm = newChecksum(SymbolValue(startSym, table))
 
 	activeTables := [2]TableIndex{0: table}
@@ -69,7 +68,7 @@ func Encode(text string) (Code128, error) {
 		if nextTable != activeTables[shift] {
 			code := []int{CODE_A, CODE_B, CODE_C, SHIFT}[nextTable]
 			bits := Bitpattern[code-SpecialOffset]
-			c128.add(bits[3:9]...)
+			c128.add(ModuleBits(bits)...)
 			cksm.add(SymbolValue(code, table))
 
 			activeTables[shift] = nextTable
@@ -82,12 +81,12 @@ func Encode(text string) (Code128, error) {
 			i++ // encode two runes at once
 		}
 		bits, val := lookup(sym, activeTables[shift])
-		c128.add(bits[3:9]...)
+		c128.add(ModuleBits(bits)...)
 		cksm.add(val)
 	}
 
 	bits = Bitpattern[cksm.sum()]
-	c128.add(bits[3:9]...)
+	c128.add(ModuleBits(bits)...)
 	c128.add(StopPattern[:]...)
 	c128.add(QuietSpace)
 
@@ -199,7 +198,7 @@ func parseCNum(rs [2]rune) int {
 	return num
 }
 
-func lookup(r int, table TableIndex) (bits []int, val int) {
+func lookup(r int, table TableIndex) (bits [9]int, val int) {
 	for i, bits := range Bitpattern {
 		if bits[table] == r {
 			return bits, i

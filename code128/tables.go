@@ -74,7 +74,7 @@ const REVERSE_STOP = -1
 // (necessary for calculating the checksum).
 // For special, non-ascii symbols, such as START, CODE, and FNC, the value is
 // offset by 32 from the index, as to not overlap with ASCII.
-var Bitpattern = [][]int{
+var Bitpattern = [...][9]int{
 	{' ', ' ', 0, 2, 1, 2, 2, 2, 2},
 	{'!', '!', 1, 2, 2, 2, 1, 2, 2},
 	{'"', '"', 2, 2, 2, 2, 2, 2, 1},
@@ -181,6 +181,10 @@ var Bitpattern = [][]int{
 	{START_A, START_A, START_A, 2, 1, 1, 4, 1, 2},
 	{START_B, START_B, START_B, 2, 1, 1, 2, 1, 4},
 	{START_C, START_C, START_C, 2, 1, 1, 2, 3, 2},
+}
+
+func ModuleBits(bits [9]int) []int {
+	return bits[3:9]
 }
 
 func SymbolValue(sym int, table TableIndex) int {
