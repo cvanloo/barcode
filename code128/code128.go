@@ -88,7 +88,7 @@ func Encode(text string) (Code128, error) {
 
 	bits = Bitpattern[cksm.sum()]
 	c128.add(bits[3:9]...)
-	c128.add(StopPattern...)
+	c128.add(StopPattern[:]...)
 	c128.add(QuietSpace)
 
 	return c128.draw(), nil
@@ -273,7 +273,7 @@ func Decode(img image.Image) (bs []rune, err error) {
 
 	tidx := []TableIndex{LookupA, LookupB, LookupC}[staSym-START_A]
 
-	decodeTables := [][][][][][][]int{
+	decodeTables := [...]DecodeTable{
 		DecodeTableA,
 		DecodeTableB,
 		DecodeTableC,

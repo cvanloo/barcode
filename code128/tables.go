@@ -220,7 +220,7 @@ const (
 	LookupShift TableIndex = 3
 )
 
-var StopPattern = []int{2, 3, 3, 1, 1, 1, 2}
+var StopPattern = [...]int{2, 3, 3, 1, 1, 1, 2}
 
 const QuietSpace = 10
 
@@ -228,7 +228,9 @@ const QuietSpace = 10
  * Decoding Tables
  */
 
-var DecodeTableA = [][][][][][]int{
+type DecodeTable [5][5][5][5][5][5]int
+
+var DecodeTableA = DecodeTable{
 	1: {
 		1: {
 			1: {
@@ -839,7 +841,7 @@ var DecodeTableA = [][][][][][]int{
 	},
 }
 
-var DecodeTableB = [][][][][][]int{
+var DecodeTableB = DecodeTable{
 	1: {
 		1: {
 			1: {
@@ -1450,7 +1452,7 @@ var DecodeTableB = [][][][][][]int{
 	},
 }
 
-var DecodeTableC = [][][][][][]int{
+var DecodeTableC = DecodeTable{
 	1: {
 		1: {
 			1: {
