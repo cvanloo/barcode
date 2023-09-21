@@ -31,6 +31,7 @@ func TestDecode(t *testing.T) {
 
 		// Data after stop
 		//{"testfiles/test_code128-data-after-stop.png", "Hello, World!"}, FIXME: failing
+		//{"testfiles/WhatWentWrong.png", "eaou"},
 
 		// Test cases that failed at some point in time
 		{"testfiles/WhatIsDorked.png", "439721-hello-WORLD"},
@@ -54,7 +55,6 @@ func TestDecode(t *testing.T) {
 			t.Errorf("got: `%s', want: `%s'", string(bs), c.expected)
 			continue
 		}
-		t.Logf("%s: %s", c.path, string(bs))
 	}
 }
 
@@ -70,6 +70,7 @@ func TestEncode(t *testing.T) {
 		"hello\026world", // should encode a SHIFT (START_B ... SHIFT(A) ...)
 		"\026\025h\006",  // should encode a SHIFT (START_A ... SHIFT(B) ...)
 		"\026\025H\006",  // should encode everything in CODE_A
+		"eaou",
 	}
 
 	for _, c := range cases {
@@ -77,6 +78,42 @@ func TestEncode(t *testing.T) {
 		if err != nil {
 			t.Errorf("failed to encode `%s': %v", c, err)
 			continue
+		}
+		bs, _, err := Decode(img)
+		if err != nil {
+			t.Errorf("failed to decode `%s': %v", c, err)
+			continue
+		}
+		if string(bs) != c {
+			t.Errorf("got: `%s', want: `%s'", string(bs), c)
+		}
+	}
+}
+
+func TestEncodeScale(t *testing.T) {
+	cases := []string{
+		"Hello, World!",
+		"11223467",
+		"\026\025",
+		"hello",
+		"112269420",
+		"yoyoyoyo",
+		"439721-hello-WORLD",
+		"hello\026world",
+		"\026\025h\006",
+		"\026\025H\006",
+		"eaou",
+	}
+
+	for _, c := range cases {
+		bc, err := Encode(c)
+		if err != nil {
+			t.Errorf("failed to encode `%s': %v", c, err)
+			continue
+		}
+		img, err := bc.Scale(312, 50)
+		if err != nil {
+			t.Error(err)
 		}
 		bs, _, err := Decode(img)
 		if err != nil {

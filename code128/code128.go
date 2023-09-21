@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"runtime"
+	"math"
 )
 
 type Code128 struct {
@@ -23,16 +24,18 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 
 	// scale width
 	scale := width / oldWidth
-	qz := (width % oldWidth) / 2
-	for x := 0; x < qz; x++ { // extend quiet zone start
+	qz := float64(width % oldWidth) / 2
+	qzs := int(math.Floor(qz))
+	qze := int(math.Ceil(qz))
+	for x := 0; x < qzs; x++ { // extend quiet zone start
 		scaledImage.SetGray16(x, 0, color.White)
 	}
 	for x := 0; x < oldWidth; x++ { // copy pixels, scale them
 		for s := 0; s < scale; s++ {
-			scaledImage.SetGray16(qz+s+x*scale, 0, c.Gray16At(x, 0))
+			scaledImage.SetGray16(qzs+s+x*scale, 0, c.Gray16At(x, 0))
 		}
 	}
-	for x := 0; x < qz; x++ { // extend quiet zone end
+	for x := 0; x < qze; x++ { // extend quiet zone end
 		scaledImage.SetGray16(width-x-1, 0, color.White)
 	}
 
