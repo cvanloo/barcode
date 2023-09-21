@@ -56,20 +56,20 @@ func Encode(text string) (Code128, error) {
 	c128.add(QuietSpace)
 
 	table = determineTable(runes, LookupNone)
-	startSym := []int{START_A, START_B, START_C}[table]
-	bits := Bitpattern[startSym-SpecialOffset]
+	startSym := [...]int{START_A-SpecialOffset, START_B-SpecialOffset, START_C-SpecialOffset}[table]
+	bits := Bitpattern[startSym]
 	c128.add(ModuleBits(bits)...)
-	cksm = newChecksum(SymbolValue(startSym, table))
+	cksm = newChecksum(startSym)
 
 	activeTables := [2]TableIndex{0: table}
 	shift := 0
 	for i := 0; i < len(runes); i++ {
 		nextTable := determineTable(runes[i:], activeTables[0])
 		if nextTable != activeTables[shift] {
-			code := []int{CODE_A, CODE_B, CODE_C, SHIFT}[nextTable]
-			bits := Bitpattern[code-SpecialOffset]
+			code := [...]int{CODE_A-SpecialOffset, CODE_B-SpecialOffset, CODE_C-SpecialOffset, SHIFT-SpecialOffset}[nextTable]
+			bits := Bitpattern[code]
 			c128.add(ModuleBits(bits)...)
-			cksm.add(SymbolValue(code, table))
+			cksm.add(code)
 
 			activeTables[shift] = nextTable
 			shift = btoi(nextTable == LookupShift)
@@ -268,16 +268,11 @@ func Decode(img image.Image) (bs []rune, err error) {
 	}()
 
 	staSym := DecodeTableA[sta[0]][sta[1]][sta[2]][sta[3]][sta[4]][sta[5]]
-	cksm := newChecksum(SymbolValue(staSym, LookupA))
+	cksm := newChecksum(staSym-SpecialOffset)
 
-	tidx := []TableIndex{LookupA, LookupB, LookupC}[staSym-START_A]
+	decodeTables := [...]DecodeTable{DecodeTableA, DecodeTableB, DecodeTableC}
 
-	decodeTables := [...]DecodeTable{
-		DecodeTableA,
-		DecodeTableB,
-		DecodeTableC,
-	}
-
+	tidx := [...]TableIndex{LookupA, LookupB, LookupC}[staSym-START_A]
 	activeTables := [2]TableIndex{0: tidx}
 	shift := 0
 
