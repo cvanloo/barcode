@@ -25,7 +25,7 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 
 	// scale width
 	scale := width / oldWidth
-	qz := float64(width % oldWidth) / 2
+	qz := float64(width%oldWidth) / 2
 	qzs := int(math.Floor(qz))
 	qze := int(math.Ceil(qz))
 	for x := 0; x < qzs; x++ { // extend quiet zone start
@@ -146,6 +146,26 @@ func (c *barcode) draw() Code128 {
 	return Code128{img}
 }
 
+type edge struct {
+	tfrom, tto TableIndex
+}
+
+func (e edge) cost() int {
+	if e.tfrom == e.tto {
+		return 1
+	}
+	if e.tto == LookupShift {
+		return 2
+	}
+	return 3
+}
+
+type node struct {
+	r    rune
+	to   []edge
+	next *node
+}
+
 func buildTableGraph(rs []rune) (txs []TableIndex) {
 	isAsciiPrintable := func(r rune) bool {
 		return r >= 0x20 /* space */ && r <= 0x7F /* DEL */
@@ -157,14 +177,15 @@ func buildTableGraph(rs []rune) (txs []TableIndex) {
 		return r >= 0x00 /* NUL */ && r <= 0x1F /* US */
 	}
 
-	isA := func(r rune) bool {
+	isA := func(rs []rune) bool {
+		r := rs[0]
 		if isSpecial(r) {
 			return true
 		}
 		return r >= 0x20 /* space */ && r <= 0x5F /* _ */
 	}
-	isB := func(r rune) bool {
-		return isAsciiPrintable(r)
+	isB := func(rs []rune) bool {
+		return isAsciiPrintable(rs[0])
 	}
 	isC := func(rs []rune) bool {
 		if len(rs) < 2 {
@@ -173,44 +194,75 @@ func buildTableGraph(rs []rune) (txs []TableIndex) {
 		return isNumber(rs[0]) && isNumber(rs[1])
 	}
 
-	type node struct {
-		lookup   TableIndex
-		str      string
-		children []*node
-	}
-	type param struct {
-		curr *node
-		idx  int
-	}
-	start := &node{lookup: LookupNone}
-	stack := []param{
-		{start, 0},
-	}
-	for len(stack) > 0 {
-		ps := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		curr := ps.curr
-		i := ps.idx
-		if len(rs) <= i {
-			continue
-		}
-		if isA(rs[i]) {
-			next := &node{lookup: LookupA, str: string(rs[i])}
-			curr.children = append(curr.children, next)
-			stack = append(stack, param{next, i + 1})
-		}
-		if isB(rs[i]) {
-			next := &node{lookup: LookupB, str: string(rs[i])}
-			curr.children = append(curr.children, next)
-			stack = append(stack, param{next, i + 1})
-		}
-		if len(rs[i:]) >= 2 && isC(rs[i:i+2]) {
-			next := &node{lookup: LookupC, str: string(rs[i : i+2])}
-			curr.children = append(curr.children, next)
-			stack = append(stack, param{next, i + 2}) // consume two chars
+	nodes := make([]node, len(rs))
+	for i, r := range rs {
+		nodes[i] = node{r: r}
+		if i > 0 {
+			nodes[i-1].next = &nodes[i]
 		}
 	}
 
+	type param struct {
+		n     *node
+		tfrom TableIndex
+		rs    []rune
+	}
+
+	addNewEdge := func(tfrom, tto TableIndex, curr *node, stack []param) []param {
+		alreadyExists := false
+		for _, v := range curr.to {
+			if v.tfrom == tfrom && v.tto == tto {
+				alreadyExists = true
+				break
+			}
+		}
+		if !alreadyExists {
+			e := edge{tfrom, tto}
+			curr.to = append(curr.to, e)
+			stack = append(stack, param{curr.next, tto, rs[1:]})
+		}
+		return stack
+	}
+
+	start := &nodes[0]
+	end := &nodes[len(nodes)-1]
+	stack := []param{{start, LookupNone, rs}}
+	for len(stack) > 0 {
+		ps := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		if ps.n == nil {
+			continue
+		}
+
+		curr := ps.n
+		tfrom := ps.tfrom
+		rs := ps.rs
+
+		if isC(rs) {
+			if tfrom == LookupC || isC(rs[2:]) {
+				stack = addNewEdge(tfrom, LookupC, curr, stack)
+			}
+		}
+		if isB(rs) {
+			if tfrom == LookupA {
+				if len(rs) >= 2 && !isB(rs[1:]) {
+					stack = addNewEdge(tfrom, LookupShift, curr, stack)
+				}
+			}
+			stack = addNewEdge(tfrom, LookupB, curr, stack)
+		}
+		if isA(rs) {
+			if tfrom == LookupB {
+				if len(rs) >= 2 && !isA(rs[1:]) {
+					stack = addNewEdge(tfrom, LookupShift, curr, stack)
+				}
+			}
+			stack = addNewEdge(tfrom, LookupA, curr, stack)
+		}
+	}
+
+	_, _ = start, end
 	return txs
 }
 

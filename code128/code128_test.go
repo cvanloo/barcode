@@ -9,6 +9,7 @@ import (
 
 func TestGraph(t *testing.T) {
 	buildTableGraph([]rune("Hello, World!"))
+	buildTableGraph([]rune("11224"))
 }
 
 func TestDecode(t *testing.T) {
@@ -143,7 +144,7 @@ func TestEncodeScale(t *testing.T) {
 }
 
 func TestEncodeSyms(t *testing.T) {
-	cases := []struct{
+	cases := []struct {
 		text string
 		syms []int
 	}{
