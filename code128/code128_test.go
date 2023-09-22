@@ -153,6 +153,8 @@ func TestEncodeSyms(t *testing.T) {
 		{"hello\026world", []int{START_B, 'h', 'e', 'l', 'l', 'o', SHIFT, 026, 'w', 'o', 'r', 'l', 'd', 59}},
 		{"\026\025h\006", []int{START_A, 026, 025, SHIFT, 'h', 06, 87}},
 		{"\026\025H\006", []int{START_A, 026, 025, 'H', 06, 70}},
+		//{"HELLO\026", []int{START_B, 'H', 'E', 'L', 'L', 'O', CODE_A, 026, 44}},
+		{"HELLO\026", []int{START_A, 'H', 'E', 'L', 'L', 'O', 026, 44}},
 	}
 
 	for _, c := range cases {

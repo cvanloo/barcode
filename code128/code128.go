@@ -146,6 +146,70 @@ func (c *barcode) draw() Code128 {
 	return Code128{img}
 }
 
+func buildTableGraph(rs []rune) (txs []TableIndex) {
+	isAsciiPrintable := func(r rune) bool {
+		return r >= 0x20 /* space */ && r <= 0x7F /* DEL */
+	}
+	isNumber := func(r rune) bool {
+		return r >= 0x30 /* 0 */ && r <= 0x39 /* 9 */
+	}
+	isSpecial := func(r rune) bool {
+		return r >= 0x00 /* NUL */ && r <= 0x1F /* US */
+	}
+
+	isA := func(r rune) bool {
+		if isSpecial(r) {
+			return true
+		}
+		return r >= 0x20 /* space */ && r <= 0x5F /* _ */
+	}
+	isB := func(r rune) bool {
+		return isAsciiPrintable(r)
+	}
+	isC := func(rs []rune) bool {
+		if len(rs) < 2 {
+			return false
+		}
+		return isNumber(rs[0]) && isNumber(rs[1])
+	}
+
+	type node struct {
+		lookup TableIndex
+		children []*node
+	}
+	type param struct {
+		curr *node
+		idx int
+	}
+	start := &node{}
+	stack := []param{
+		{start, 0},
+	}
+	for len(stack) > 0 {
+		ps := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		curr := ps.curr
+		i := ps.idx
+		if isA(rs[i]) {
+			next := &node{lookup: LookupA}
+			curr.children = append(curr.children, next)
+			stack = append(stack, param{next, i+1})
+		}
+		if isB(rs[i]) {
+			next := &node{lookup: LookupB}
+			curr.children = append(curr.children, next)
+			stack = append(stack, param{next, i+1})
+		}
+		if isC(rs[i:i+2]) {
+			next := &node{lookup: LookupC}
+			curr.children = append(curr.children, next)
+			stack = append(stack, param{next, i+2}) // consume two chars
+		}
+	}
+
+	return txs
+}
+
 func determineTable(rs []rune, currentTable TableIndex) TableIndex {
 	// ~$ man 7 ascii
 	isAsciiPrintable := func(r rune) bool {
