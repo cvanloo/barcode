@@ -71,6 +71,8 @@ func TestEncode(t *testing.T) {
 		"\026\025h\006",  // should encode a SHIFT (START_A ... SHIFT(B) ...)
 		"\026\025H\006",  // should encode everything in CODE_A
 		"eaou",
+		"SYN:\026",
+		"\026\026\026b",
 	}
 
 	for _, c := range cases {

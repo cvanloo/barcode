@@ -182,10 +182,10 @@ func determineTable(rs []rune, currentTable TableIndex) TableIndex {
 	}
 	if isB(rs) {
 		if currentTable == LookupA {
-			if isA(rs) {
+			if isA(rs) { // stay in A
 				return LookupA
 			}
-			if !isB(rs[1:]) {
+			if len(rs) >= 2 && !isB(rs[1:]) {
 				return LookupShift
 			}
 		}
@@ -193,7 +193,7 @@ func determineTable(rs []rune, currentTable TableIndex) TableIndex {
 	}
 	if isA(rs) {
 		if currentTable == LookupB {
-			if !isA(rs[1:]) {
+			if len(rs) >= 2 && !isA(rs[1:]) {
 				return LookupShift
 			}
 		}
