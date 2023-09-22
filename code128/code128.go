@@ -50,6 +50,15 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 	return scaledImage, nil
 }
 
+type ASCII string
+
+func NewASCII(text string) (ASCII, error) {
+	if !isASCII(text) {
+		return "", errors.New("not an ASCII string")
+	}
+	return ASCII(text), nil
+}
+
 func isASCII(text string) bool {
 	for _, r := range text {
 		if r > unicode.MaxASCII {
@@ -59,10 +68,7 @@ func isASCII(text string) bool {
 	return true
 }
 
-func Encode(text string) (Code128, error) {
-	if !isASCII(text) {
-		return Code128{}, errors.New("string contains invalid ASCII symbols")
-	}
+func Encode(text ASCII) (Code128, error) {
 	var (
 		c128  = &barcode{}
 		runes = []rune(text)

@@ -74,7 +74,12 @@ func TestEncode(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		img, err := Encode(c)
+		cstr, err := NewASCII(c)
+		if err != nil {
+			t.Errorf("cannot convert %s to cstring: %v", c, err)
+			continue
+		}
+		img, err := Encode(cstr)
 		if err != nil {
 			t.Errorf("failed to encode `%s': %v", c, err)
 			continue
@@ -106,7 +111,12 @@ func TestEncodeScale(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		bc, err := Encode(c)
+		cstr, err := NewASCII(c)
+		if err != nil {
+			t.Errorf("cannot convert %s to cstring: %v", c, err)
+			continue
+		}
+		bc, err := Encode(cstr)
 		if err != nil {
 			t.Errorf("failed to encode `%s': %v", c, err)
 			continue
@@ -144,7 +154,12 @@ func TestEncodeSyms(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		img, err := Encode(c.text)
+		cstr, err := NewASCII(c.text)
+		if err != nil {
+			t.Errorf("cannot convert %s to cstring: %v", c.text, err)
+			continue
+		}
+		img, err := Encode(cstr)
 		if err != nil {
 			t.Errorf("failed to encode `%s': %v", c.text, err)
 			continue
@@ -168,7 +183,29 @@ func TestEncodeSyms(t *testing.T) {
 	}
 }
 
-func TestEncodeFail(t *testing.T) {
+func TestASCII(t *testing.T) {
+	cases := []string{
+		"Hello, World!",
+		"11223467",
+		"\026\025",
+		"hello",
+		"112269420",
+		"yoyoyoyo",
+		"439721-hello-WORLD",
+		"hello\026world",
+		"\026\025h\006",
+		"\026\025H\006",
+		"eaou",
+	}
+	for _, c := range cases {
+		_, err := NewASCII(c)
+		if err != nil {
+			t.Errorf("failed to convert %s to cstring", c)
+		}
+	}
+}
+
+func TestASCIIFail(t *testing.T) {
 	cases := []string{
 		"日本語",
 		"1日本語",
@@ -176,7 +213,7 @@ func TestEncodeFail(t *testing.T) {
 		"2日hell本o語",
 	}
 	for _, c := range cases {
-		_, err := Encode(c)
+		_, err := NewASCII(c)
 		if err == nil {
 			t.Errorf("should fail, but didn't: %s", c)
 		}
