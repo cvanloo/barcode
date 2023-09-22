@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"runtime"
 	"math"
+	"runtime"
+	"unicode"
 )
 
 type Code128 struct {
@@ -49,20 +50,30 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 	return scaledImage, nil
 }
 
+func isASCII(text string) bool {
+	for _, r := range text {
+		if r > unicode.MaxASCII {
+			return false
+		}
+	}
+	return true
+}
+
 func Encode(text string) (Code128, error) {
+	if !isASCII(text) {
+		return Code128{}, errors.New("string contains invalid ASCII symbols")
+	}
 	var (
-		table TableIndex
-		cksm  *checksum
 		c128  = &barcode{}
 		runes = []rune(text)
 	)
 
 	c128.add(QuietSpace)
 
-	table = determineTable(runes, LookupNone)
+	table := determineTable(runes, LookupNone)
 	startSym := [...]int{START_A - SpecialOffset, START_B - SpecialOffset, START_C - SpecialOffset}[table]
 	c128.add(ModuleBits(Bitpattern[startSym])...)
-	cksm = newChecksum(startSym)
+	cksm := newChecksum(startSym)
 
 	activeTables := [2]TableIndex{0: table}
 	for i := 0; i < len(runes); i++ {
@@ -183,7 +194,7 @@ func determineTable(rs []rune, currentTable TableIndex) TableIndex {
 		return LookupA
 	}
 
-	panic("unreachable (hopefully)")
+	panic(fmt.Errorf("cannot encode symbol: %U %U (`%s')", rs[0], rs[1], string(rs[0:2])))
 }
 
 func isCNum(rs []rune) bool {

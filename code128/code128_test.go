@@ -167,3 +167,18 @@ func TestEncodeSyms(t *testing.T) {
 		}
 	}
 }
+
+func TestEncodeFail(t *testing.T) {
+	cases := []string{
+		"日本語",
+		"1日本語",
+		"11日本語",
+		"2日hell本o語",
+	}
+	for _, c := range cases {
+		_, err := Encode(c)
+		if err == nil {
+			t.Errorf("should fail, but didn't: %s", c)
+		}
+	}
+}
