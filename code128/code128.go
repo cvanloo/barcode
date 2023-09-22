@@ -174,14 +174,15 @@ func buildTableGraph(rs []rune) (txs []TableIndex) {
 	}
 
 	type node struct {
-		lookup TableIndex
+		lookup   TableIndex
+		str      string
 		children []*node
 	}
 	type param struct {
 		curr *node
-		idx int
+		idx  int
 	}
-	start := &node{}
+	start := &node{lookup: LookupNone}
 	stack := []param{
 		{start, 0},
 	}
@@ -190,20 +191,23 @@ func buildTableGraph(rs []rune) (txs []TableIndex) {
 		stack = stack[:len(stack)-1]
 		curr := ps.curr
 		i := ps.idx
+		if len(rs) <= i {
+			continue
+		}
 		if isA(rs[i]) {
-			next := &node{lookup: LookupA}
+			next := &node{lookup: LookupA, str: string(rs[i])}
 			curr.children = append(curr.children, next)
-			stack = append(stack, param{next, i+1})
+			stack = append(stack, param{next, i + 1})
 		}
 		if isB(rs[i]) {
-			next := &node{lookup: LookupB}
+			next := &node{lookup: LookupB, str: string(rs[i])}
 			curr.children = append(curr.children, next)
-			stack = append(stack, param{next, i+1})
+			stack = append(stack, param{next, i + 1})
 		}
-		if isC(rs[i:i+2]) {
-			next := &node{lookup: LookupC}
+		if len(rs[i:]) >= 2 && isC(rs[i:i+2]) {
+			next := &node{lookup: LookupC, str: string(rs[i : i+2])}
 			curr.children = append(curr.children, next)
-			stack = append(stack, param{next, i+2}) // consume two chars
+			stack = append(stack, param{next, i + 2}) // consume two chars
 		}
 	}
 
