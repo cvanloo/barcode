@@ -147,14 +147,14 @@ func (c *barcode) draw() Code128 {
 }
 
 type edge struct {
-	tfrom, tto TableIndex
+	fromIndex, toIndex TableIndex
 }
 
 func (e edge) cost() int {
-	if e.tfrom == e.tto {
+	if e.toIndex == e.fromIndex {
 		return 1
 	}
-	if e.tto == LookupShift {
+	if e.toIndex == LookupShift {
 		return 2
 	}
 	return 3
@@ -163,11 +163,12 @@ func (e edge) cost() int {
 type node struct {
 	r    rune
 	to   []edge
-	next *node
+	distance int
+	tidx TableIndex
 }
 
-func buildTableGraph(rs []rune) (txs []TableIndex) {
-	isAsciiPrintable := func(r rune) bool {
+func determineTables(rs []rune) (txs []TableIndex) {
+	isPrintable := func(r rune) bool {
 		return r >= 0x20 /* space */ && r <= 0x7F /* DEL */
 	}
 	isNumber := func(r rune) bool {
@@ -185,7 +186,7 @@ func buildTableGraph(rs []rune) (txs []TableIndex) {
 		return r >= 0x20 /* space */ && r <= 0x5F /* _ */
 	}
 	isB := func(rs []rune) bool {
-		return isAsciiPrintable(rs[0])
+		return isPrintable(rs[0])
 	}
 	isC := func(rs []rune) bool {
 		if len(rs) < 2 {
@@ -196,73 +197,80 @@ func buildTableGraph(rs []rune) (txs []TableIndex) {
 
 	nodes := make([]node, len(rs))
 	for i, r := range rs {
-		nodes[i] = node{r: r}
-		if i > 0 {
-			nodes[i-1].next = &nodes[i]
+		nodes[i] = node{
+			r: r,
+			to: nil,
+			distance: math.MaxInt,
+			tidx: LookupNone,
 		}
 	}
 
 	type param struct {
-		n     *node
-		tfrom TableIndex
-		rs    []rune
+		i         int
+		fromIndex TableIndex
+		rs        []rune
 	}
 
-	addNewEdge := func(tfrom, tto TableIndex, curr *node, stack []param) []param {
-		alreadyExists := false
-		for _, v := range curr.to {
-			if v.tfrom == tfrom && v.tto == tto {
-				alreadyExists = true
-				break
+	makeEdge := func(fromIndex, toIndex TableIndex, i int, rs []rune, stack []param) []param {
+		// probably still faster than a map?
+		for _, v := range nodes[i].to {
+			if v.fromIndex == fromIndex && v.toIndex == toIndex {
+				return stack
 			}
 		}
-		if !alreadyExists {
-			e := edge{tfrom, tto}
-			curr.to = append(curr.to, e)
-			stack = append(stack, param{curr.next, tto, rs[1:]})
-		}
+		e := edge{fromIndex, toIndex}
+		nodes[i].to = append(nodes[i].to, e)
+		stack = append(stack, param{i+1, toIndex, rs[1:]})
 		return stack
 	}
 
-	start := &nodes[0]
-	end := &nodes[len(nodes)-1]
-	stack := []param{{start, LookupNone, rs}}
+	stack := []param{{0, LookupNone, rs}}
 	for len(stack) > 0 {
 		ps := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
-		if ps.n == nil {
+		if ps.i >= len(nodes) {
 			continue
 		}
 
-		curr := ps.n
-		tfrom := ps.tfrom
+		i := ps.i
+		tidx := ps.fromIndex
 		rs := ps.rs
+		fmt.Println(string(rs))
 
 		if isC(rs) {
-			if tfrom == LookupC || isC(rs[2:]) {
-				stack = addNewEdge(tfrom, LookupC, curr, stack)
+			if tidx == LookupC || isC(rs[2:]) {
+				stack = makeEdge(tidx, LookupC, i, rs, stack)
 			}
 		}
 		if isB(rs) {
-			if tfrom == LookupA {
-				if len(rs) >= 2 && !isB(rs[1:]) {
-					stack = addNewEdge(tfrom, LookupShift, curr, stack)
-				}
+			if tidx == LookupA && len(rs) >= 2 && !isB(rs[1:]) {
+				stack = makeEdge(tidx, LookupShift, i, rs, stack)
+			} else {
+				stack = makeEdge(tidx, LookupB, i, rs, stack)
 			}
-			stack = addNewEdge(tfrom, LookupB, curr, stack)
 		}
 		if isA(rs) {
-			if tfrom == LookupB {
-				if len(rs) >= 2 && !isA(rs[1:]) {
-					stack = addNewEdge(tfrom, LookupShift, curr, stack)
-				}
+			if tidx == LookupB && len(rs) >= 2 && !isA(rs[1:]) {
+				stack = makeEdge(tidx, LookupShift, i, rs, stack)
+			} else {
+				stack = makeEdge(tidx, LookupA, i, rs, stack)
 			}
-			stack = addNewEdge(tfrom, LookupA, curr, stack)
 		}
 	}
 
-	_, _ = start, end
+	// @todo: we need a start node before the first character node
+	nodes[0].distance = 0
+	for i := 0; i < len(nodes)-1; i++ {
+		for _, n := range nodes[i].to {
+			c := nodes[i].distance + n.cost()
+			if c < nodes[i+1].distance {
+				nodes[i+1].distance = c
+				nodes[i+1].tidx = n.toIndex
+			}
+		}
+	}
+
 	return txs
 }
 
