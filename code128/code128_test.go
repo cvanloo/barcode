@@ -8,6 +8,8 @@ import (
 )
 
 func TestGraph(t *testing.T) {
+	determineTables([]rune("He1123o"))
+	determineTables([]rune("He11o"))
 	determineTables([]rune("Hello, World!"))
 	determineTables([]rune("11224"))
 }
