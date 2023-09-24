@@ -181,7 +181,7 @@ func buildTableGraph(rs []rune) (txs []TableIndex) {
 		curr *node
 		idx int
 	}
-	start := &node{}
+	start := &node{LookupNone, nil}
 	stack := []param{
 		{start, 0},
 	}
@@ -190,6 +190,11 @@ func buildTableGraph(rs []rune) (txs []TableIndex) {
 		stack = stack[:len(stack)-1]
 		curr := ps.curr
 		i := ps.idx
+
+		if i >= len(rs) {
+			continue
+		}
+
 		if isA(rs[i]) {
 			next := &node{lookup: LookupA}
 			curr.children = append(curr.children, next)
@@ -200,7 +205,7 @@ func buildTableGraph(rs []rune) (txs []TableIndex) {
 			curr.children = append(curr.children, next)
 			stack = append(stack, param{next, i+1})
 		}
-		if isC(rs[i:i+2]) {
+		if len(rs[i:]) > 2 && isC(rs[i:i+2]) {
 			next := &node{lookup: LookupC}
 			curr.children = append(curr.children, next)
 			stack = append(stack, param{next, i+2}) // consume two chars

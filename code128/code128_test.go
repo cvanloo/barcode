@@ -7,6 +7,10 @@ import (
 	"testing"
 )
 
+func TestGraph(t *testing.T) {
+	buildTableGraph([]rune("He1123o"))
+}
+
 func TestDecode(t *testing.T) {
 	cases := []struct {
 		path, expected string
