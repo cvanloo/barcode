@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"math"
 	"runtime"
+	"slices"
 	"unicode"
 )
 
@@ -25,7 +26,7 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 
 	// scale width
 	scale := width / oldWidth
-	qz := float64(width % oldWidth) / 2
+	qz := float64(width%oldWidth) / 2
 	qzs := int(math.Floor(qz))
 	qze := int(math.Ceil(qz))
 	for x := 0; x < qzs; x++ { // extend quiet zone start
@@ -144,6 +145,121 @@ func (c *barcode) draw() Code128 {
 		}
 	}
 	return Code128{img}
+}
+
+type priorityQueue[T any] struct {
+	items   []T
+	compare func(l, r T) int
+}
+
+func (p *priorityQueue[T]) enqueue(val T) {
+	for i := 0; i < len(p.items); i++ {
+		if p.compare(val, p.items[i]) <= 0 {
+			// @@ perf?
+			p.items = append(p.items[:i+1], p.items[i:]...)
+			p.items[i] = val
+			return
+		}
+	}
+	// queue is empty
+	p.items = append(p.items, val)
+}
+
+func (p *priorityQueue[T]) dequeue() T {
+	val := p.items[0]
+	p.items = p.items[1:]
+	return val
+}
+
+func (p *priorityQueue[T]) empty() bool {
+	return len(p.items) == 0
+}
+
+type edge struct {
+	source, destination, weight int
+}
+
+func determineTable2(rs []rune) []TableIndex {
+	rs = make([]rune, 6) // @@ testing
+	adjacency := make([][]edge, len(rs))
+
+	addEdge := func(src, dst, w int) {
+		// @@ only one adjacency per vertex?
+		e := edge{src, dst, w}
+		adjacency[src] = append(adjacency[src], e)
+	}
+
+	{ // @@ setup some testing edges
+		addEdge(0, 1, 4)
+		addEdge(0, 2, 3)
+		addEdge(1, 2, 1)
+		addEdge(1, 3, 2)
+		addEdge(2, 3, 4)
+		addEdge(3, 4, 2)
+		addEdge(4, 5, 6)
+	}
+
+	previous := make([]int, len(rs))
+
+	visited := make([]bool, len(rs))
+
+	distances := make([]int, len(rs))
+	for i := 1; /* leave first at 0 */ i < len(distances); i++ {
+		distances[i] = math.MaxInt
+	}
+
+	type distancePair struct {
+		distance, index int
+	}
+	pq := priorityQueue[distancePair]{
+		items: make([]distancePair, 0, len(rs)), // set initial capacity
+		compare: func(l, r distancePair) int {
+			return l.distance - r.distance // lower distances first
+		},
+	}
+
+	pq.enqueue(distancePair{distances[0], 0})
+
+	for !pq.empty() {
+		minVertex := pq.dequeue().index
+		if !visited[minVertex] {
+			visited[minVertex] = true
+			adjacentEdges := adjacency[minVertex]
+			for _, e := range adjacentEdges {
+				dest := e.destination
+				if !visited[dest] {
+					newDist := distances[minVertex] + e.weight
+					if newDist < distances[dest] {
+						distances[dest] = newDist
+						pq.enqueue(distancePair{newDist, dest})
+						previous[dest] = minVertex
+					}
+				}
+			}
+		}
+	}
+
+	for i := range distances {
+		fmt.Printf("from %d to %d distance %d\n", 0, i, distances[i])
+	}
+
+	fmt.Printf("%+v\n", previous)
+
+	var path []int
+	dest := 5 // @@ len(rs) - 1
+	for {
+		prev := previous[dest]
+		path = append(path, dest)
+		if dest == 0 {
+			break
+		}
+		dest = prev
+	}
+
+	slices.Reverse(path)
+	fmt.Printf("%+v\n", path)
+
+	return nil
 }
 
 func determineTable(rs []rune, currentTable TableIndex) TableIndex {

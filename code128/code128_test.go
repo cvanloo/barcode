@@ -139,7 +139,7 @@ func TestEncodeScale(t *testing.T) {
 }
 
 func TestEncodeSyms(t *testing.T) {
-	cases := []struct{
+	cases := []struct {
 		text string
 		syms []int
 	}{
@@ -220,4 +220,8 @@ func TestASCIIFail(t *testing.T) {
 			t.Errorf("should fail, but didn't: %s", c)
 		}
 	}
+}
+
+func TestDetermineTable(t *testing.T) {
+	determineTable2([]rune("He11o, W027ld!"))
 }
