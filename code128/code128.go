@@ -255,7 +255,11 @@ func determineTable2(rs []rune) []TableIndex {
 		}
 	}
 
-	previous := make([]int, vertices)
+	type previousEntry struct {
+		i     int
+		table TableIndex
+	}
+	previous := make([]previousEntry, vertices)
 
 	visited := make([]bool, vertices)
 
@@ -288,7 +292,7 @@ func determineTable2(rs []rune) []TableIndex {
 					if newDist < distances[dest] {
 						distances[dest] = newDist
 						pq.enqueue(distancePair{newDist, dest})
-						previous[dest] = minVertex
+						previous[dest] = previousEntry{minVertex, e.nextTable}
 					}
 				}
 			}
@@ -301,12 +305,12 @@ func determineTable2(rs []rune) []TableIndex {
 
 	fmt.Printf("%+v\n", previous)
 
-	var path []int
-	dest := len(rs) - 1
+	var path []TableIndex
+	dest := previousEntry{len(rs), LookupNone}
 	for {
-		prev := previous[dest]
-		path = append(path, dest)
-		if dest == 0 {
+		prev := previous[dest.i]
+		path = append(path, dest.table)
+		if dest.i == 0 {
 			break
 		}
 		dest = prev
@@ -315,7 +319,7 @@ func determineTable2(rs []rune) []TableIndex {
 	slices.Reverse(path)
 	fmt.Printf("%+v\n", path)
 
-	return nil
+	return path
 }
 
 func determineTable(rs []rune, currentTable TableIndex) TableIndex {
