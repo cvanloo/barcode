@@ -176,34 +176,90 @@ func (p *priorityQueue[T]) empty() bool {
 }
 
 type edge struct {
-	source, destination, weight int
+	source, destination  int
+	lastTable, nextTable TableIndex
+}
+
+func (e edge) weight() int {
+	if e.lastTable == e.nextTable {
+		return 1
+	}
+	return 2
 }
 
 func determineTable2(rs []rune) []TableIndex {
-	rs = make([]rune, 6) // @@ testing
-	adjacency := make([][]edge, len(rs))
+	vertices := len(rs) + 1
+	adjacency := make([][]edge, vertices)
 
-	addEdge := func(src, dst, w int) {
+	addEdge := func(src, dst int, last, next TableIndex) {
 		// @@ only one adjacency per vertex?
-		e := edge{src, dst, w}
+		e := edge{src, dst, last, next}
 		adjacency[src] = append(adjacency[src], e)
 	}
 
-	{ // @@ setup some testing edges
-		addEdge(0, 1, 4)
-		addEdge(0, 2, 3)
-		addEdge(1, 2, 1)
-		addEdge(1, 3, 2)
-		addEdge(2, 3, 4)
-		addEdge(3, 4, 2)
-		addEdge(4, 5, 6)
+	{
+		isAsciiPrintable := func(r rune) bool {
+			return r >= 0x20 /* space */ && r <= 0x7F /* DEL */
+		}
+		isNumber := func(r rune) bool {
+			return r >= 0x30 /* 0 */ && r <= 0x39 /* 9 */
+		}
+		isSpecial := func(r rune) bool {
+			return r >= 0x00 /* NUL */ && r <= 0x1F /* US */
+		}
+
+		isA := func(r rune) bool {
+			if isSpecial(r) {
+				return true
+			}
+			return r >= 0x20 /* space */ && r <= 0x5F /* _ */
+		}
+		isB := func(r rune) bool {
+			return isAsciiPrintable(r)
+		}
+		isC := func(rs []rune) bool {
+			if len(rs) < 2 {
+				return false
+			}
+			return isNumber(rs[0]) && isNumber(rs[1])
+		}
+
+		type param struct {
+			idx  int
+			last TableIndex
+		}
+		stack := []param{{0, LookupNone}}
+		for len(stack) > 0 {
+			ps := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+
+			i := ps.idx
+			last := ps.last
+
+			if len(rs) <= i {
+				continue
+			}
+			if isA(rs[i]) {
+				addEdge(i, i+1, last, LookupA)
+				stack = append(stack, param{i + 1, LookupA})
+			}
+			if isB(rs[i]) {
+				addEdge(i, i+1, last, LookupB)
+				stack = append(stack, param{i + 1, LookupB})
+			}
+			if len(rs[i:]) >= 2 && isC(rs[i:i+2]) {
+				// consumes two chars
+				addEdge(i, i+2, last, LookupC)
+				stack = append(stack, param{i + 2, LookupC})
+			}
+		}
 	}
 
-	previous := make([]int, len(rs))
+	previous := make([]int, vertices)
 
-	visited := make([]bool, len(rs))
+	visited := make([]bool, vertices)
 
-	distances := make([]int, len(rs))
+	distances := make([]int, vertices)
 	for i := 1; /* leave first at 0 */ i < len(distances); i++ {
 		distances[i] = math.MaxInt
 	}
@@ -212,7 +268,7 @@ func determineTable2(rs []rune) []TableIndex {
 		distance, index int
 	}
 	pq := priorityQueue[distancePair]{
-		items: make([]distancePair, 0, len(rs)), // set initial capacity
+		items: make([]distancePair, 0, vertices), // set initial capacity
 		compare: func(l, r distancePair) int {
 			return l.distance - r.distance // lower distances first
 		},
@@ -228,7 +284,7 @@ func determineTable2(rs []rune) []TableIndex {
 			for _, e := range adjacentEdges {
 				dest := e.destination
 				if !visited[dest] {
-					newDist := distances[minVertex] + e.weight
+					newDist := distances[minVertex] + e.weight()
 					if newDist < distances[dest] {
 						distances[dest] = newDist
 						pq.enqueue(distancePair{newDist, dest})
@@ -246,7 +302,7 @@ func determineTable2(rs []rune) []TableIndex {
 	fmt.Printf("%+v\n", previous)
 
 	var path []int
-	dest := 5 // @@ len(rs) - 1
+	dest := len(rs) - 1
 	for {
 		prev := previous[dest]
 		path = append(path, dest)

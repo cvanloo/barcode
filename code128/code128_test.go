@@ -223,5 +223,6 @@ func TestASCIIFail(t *testing.T) {
 }
 
 func TestDetermineTable(t *testing.T) {
-	determineTable2([]rune("He11o, W027ld!"))
+	determineTable2([]rune("He110"))
+	//determineTable2([]rune("He11o, W027ld!"))
 }
