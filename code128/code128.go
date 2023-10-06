@@ -261,9 +261,11 @@ func (c *checksum) sum() int {
 var BarColorTolerance = 0.7
 
 func Decode(img image.Image) (bs []rune, syms []int, err error) {
-	widths, err := modules(img)
-	if err != nil {
-		return nil, nil, err
+	widths := modules(img)
+
+	// minimum barcode length: 1 qs, 6 start, 6*(1+) data, 6 chksm, 7 stop, 1 qe
+	if len(widths) < 27 {
+		return nil, nil, errors.New("malformed input")
 	}
 
 	rev := reverse(widths)
@@ -353,7 +355,7 @@ func Decode(img image.Image) (bs []rune, syms []int, err error) {
 	return bs, syms, nil
 }
 
-func modules(img image.Image) (widths []int, err error) {
+func modules(img image.Image) (widths []int) {
 	var (
 		isBar             = false // bar or space; start out expecting spaces (quiet zone)
 		run               = 0     // length of current bar or space
@@ -415,7 +417,7 @@ func modules(img image.Image) (widths []int, err error) {
 	if quietSpaceMissing {
 		widths = append(widths, 0)
 	}
-	return widths, nil
+	return widths
 }
 
 func reverse(widths []int) (isReversed bool) {
