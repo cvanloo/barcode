@@ -28,6 +28,7 @@ func TestDecode(t *testing.T) {
 		{"testfiles/ClearCutDither.png", "hello"},
 		{"testfiles/ClearCutBlackAround.png", "hello"},
 		{"testfiles/ClearCutWhiteAround.png", "hello"},
+		{"testfiles/QuietSpaceMissing.png", "1"},
 
 		// Data after stop
 		//{"testfiles/test_code128-data-after-stop.png", "Hello, World!"}, FIXME: failing
