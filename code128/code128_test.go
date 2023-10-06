@@ -63,6 +63,7 @@ func TestDecodeFail(t *testing.T) {
 	cases := []string{
 		"testfiles/NotABarcode.png",
 		"testfiles/NotABarcode2.png",
+		"testfiles/WhereDidTheStartGo.png",
 	}
 	for _, c := range cases {
 		f, err := os.Open(c)
@@ -80,6 +81,7 @@ func TestDecodeFail(t *testing.T) {
 			t.Error("expected an error, got nil")
 			continue
 		}
+		t.Log(err)
 	}
 }
 
