@@ -64,6 +64,7 @@ func TestDecodeFail(t *testing.T) {
 		"testfiles/NotABarcode.png",
 		"testfiles/NotABarcode2.png",
 		"testfiles/WhereDidTheStartGo.png",
+		"testfiles/NowThisIsGoingTooFar.png",
 	}
 	for _, c := range cases {
 		f, err := os.Open(c)

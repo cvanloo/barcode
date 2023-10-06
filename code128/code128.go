@@ -266,7 +266,11 @@ func Decode(img image.Image) (bs []rune, syms []int, err error) {
 		return nil, nil, err
 	}
 
-	rev := reverse(widths)
+	rev, err := reverse(widths)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	qs, sta, d, c, stp, qe := segments(widths)
 	_, _, _, _ = qs, qe, stp, rev
 
@@ -427,7 +431,16 @@ func modules(img image.Image) (widths []int, err error) {
 	return widths, nil
 }
 
-func reverse(widths []int) (isReversed bool) {
+func reverse(widths []int) (isReversed bool, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			seq := ""
+			for i := 1; i < len(widths) && i < 7; i++ {
+				seq += fmt.Sprintf("%d", widths[i])
+			}
+			err = fmt.Errorf("invalid start/stop sequence: %s: %+v", seq, r)
+		}
+	}()
 	startSym := widths[1:7]
 	sym := DecodeTableA[startSym[0]][startSym[1]][startSym[2]][startSym[3]][startSym[4]][startSym[5]]
 	if sym == REVERSE_STOP {
