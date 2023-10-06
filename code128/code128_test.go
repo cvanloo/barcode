@@ -59,6 +59,30 @@ func TestDecode(t *testing.T) {
 	}
 }
 
+func TestDecodeFail(t *testing.T) {
+	cases := []string{
+		"testfiles/NotABarcode.png",
+		"testfiles/NotABarcode2.png",
+	}
+	for _, c := range cases {
+		f, err := os.Open(c)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		img, _, err := image.Decode(f)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		_, _, err = Decode(img)
+		if err == nil {
+			t.Error("expected an error, got nil")
+			continue
+		}
+	}
+}
+
 func TestEncode(t *testing.T) {
 	cases := []string{
 		"Hello, World!",
