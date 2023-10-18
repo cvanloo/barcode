@@ -7,6 +7,38 @@ import (
 	"testing"
 )
 
+func TestDetermineIndices(t *testing.T) {
+	cases := []struct{
+		text string
+		expected []TableIndex
+	}{
+		{"Abc12", []TableIndex{LookupB, LookupB, LookupB, LookupB, LookupB}},
+		{"Abc1234", []TableIndex{LookupB, LookupB, LookupB, LookupC, LookupC, LookupC, LookupC}},
+		{"Hello\026", []TableIndex{LookupB, LookupB, LookupB, LookupB, LookupB, LookupA}},
+		{"Hello\026o", []TableIndex{LookupB, LookupB, LookupB, LookupB, LookupB, LookupShift, LookupB}},
+		{"HELLO\026", []TableIndex{LookupA, LookupA, LookupA, LookupA, LookupA, LookupA}},
+		{"\026\026\026b", []TableIndex{LookupA, LookupA, LookupA, LookupB}},
+		{"11223456", []TableIndex{LookupC, LookupC, LookupC, LookupC, LookupC, LookupC, LookupC, LookupC}},
+		{"112234567", []TableIndex{LookupC, LookupC, LookupC, LookupC, LookupC, LookupC, LookupC, LookupC, LookupB}},
+	}
+	for _, c := range cases {
+		text, err := NewASCII(c.text)
+		if err != nil {
+			t.Errorf("cannot convert %s to ASCII: %v", c.text, err)
+			continue
+		}
+		indices := determineIndices(text)
+		for i := range c.expected {
+			if len(c.expected) != len(indices) {
+				t.Errorf("got: %v, want: %v\n", indices, c.expected)
+			}
+			if c.expected[i] != indices[i] {
+				t.Errorf("at index %d: got: %v, want: %v", i, indices[i], c.expected[i])
+			}
+		}
+	}
+}
+
 func TestDecode(t *testing.T) {
 	cases := []struct {
 		path, expected string
@@ -104,12 +136,12 @@ func TestEncode(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		cstr, err := NewASCII(c)
+		text, err := NewASCII(c)
 		if err != nil {
-			t.Errorf("cannot convert %s to cstring: %v", c, err)
+			t.Errorf("cannot convert %s to ASCII: %v", c, err)
 			continue
 		}
-		img, err := Encode(cstr)
+		img, err := Encode(text)
 		if err != nil {
 			t.Errorf("failed to encode `%s': %v", c, err)
 			continue
@@ -141,12 +173,12 @@ func TestEncodeScale(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		cstr, err := NewASCII(c)
+		text, err := NewASCII(c)
 		if err != nil {
-			t.Errorf("cannot convert %s to cstring: %v", c, err)
+			t.Errorf("cannot convert %s to ASCII: %v", c, err)
 			continue
 		}
-		bc, err := Encode(cstr)
+		bc, err := Encode(text)
 		if err != nil {
 			t.Errorf("failed to encode `%s': %v", c, err)
 			continue
@@ -181,15 +213,18 @@ func TestEncodeSyms(t *testing.T) {
 		{"hello\026world", []int{START_B, 'h', 'e', 'l', 'l', 'o', SHIFT, 026, 'w', 'o', 'r', 'l', 'd', 59}},
 		{"\026\025h\006", []int{START_A, 026, 025, SHIFT, 'h', 06, 87}},
 		{"\026\025H\006", []int{START_A, 026, 025, 'H', 06, 70}},
+		{"HELLO\026", []int{START_A, 'H', 'E', 'L', 'L', 'O', 026, 72}},
+		{"hello5", []int{START_B, 'h', 'e', 'l', 'l', 'o', '5', 60}},
 	}
 
 	for _, c := range cases {
-		cstr, err := NewASCII(c.text)
+		t.Logf("current entry: %s", c.text)
+		text, err := NewASCII(c.text)
 		if err != nil {
-			t.Errorf("cannot convert %s to cstring: %v", c.text, err)
+			t.Errorf("cannot convert %s to ASCII: %v", c.text, err)
 			continue
 		}
-		img, err := Encode(cstr)
+		img, err := Encode(text)
 		if err != nil {
 			t.Errorf("failed to encode `%s': %v", c.text, err)
 			continue

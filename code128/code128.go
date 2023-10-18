@@ -69,43 +69,40 @@ func isASCII(text string) bool {
 }
 
 func Encode(text ASCII) (Code128, error) {
-	var (
-		c128  = &barcode{}
-		runes = []rune(text)
-	)
+	indices := determineIndices(text)
 
+	c128  := &barcode{}
 	c128.add(QuietSpace)
 
-	table := determineTable(runes, LookupNone)
-	startSym := [...]int{START_A - SpecialOffset, START_B - SpecialOffset, START_C - SpecialOffset}[table]
+	startSym := [...]int{START_A - SpecialOffset, START_B - SpecialOffset, START_C - SpecialOffset}[indices[0]]
 	c128.add(ModuleBits(Bitpattern[startSym])...)
 	cksm := newChecksum(startSym)
 
-	activeTables := [2]TableIndex{0: table}
+	runes := []rune(text)
+	lastTable := indices[0]
 	for i := 0; i < len(runes); i++ {
-		shift := 0
-		nextTable := determineTable(runes[i:], activeTables[0])
-		if nextTable != activeTables[0] {
-			code := [...]int{CODE_A - SpecialOffset, CODE_B - SpecialOffset, CODE_C - SpecialOffset, SHIFT - SpecialOffset}[nextTable]
-			bits := Bitpattern[code]
-			c128.add(ModuleBits(bits)...)
-			cksm.add(code)
+		nextTable := indices[i]
+		if nextTable != lastTable {
+			if lastTable != LookupShift {
+				code := [...]int{CODE_A - SpecialOffset, CODE_B - SpecialOffset, CODE_C - SpecialOffset, SHIFT - SpecialOffset}[nextTable]
+				bits := Bitpattern[code]
+				c128.add(ModuleBits(bits)...)
+				cksm.add(code)
+			}
 
 			if nextTable == LookupShift {
-				assert(activeTables[0] == 0 || activeTables[0] == 1, "invalid shift")
-				shift = 1
-				activeTables[shift] = [...]TableIndex{LookupB, LookupA}[activeTables[0]]
+				nextTable = [...]TableIndex{LookupB, LookupA}[lastTable]
 			} else {
-				activeTables[0] = nextTable
+				lastTable = nextTable
 			}
 		}
 
 		sym := int(runes[i])
-		if activeTables[shift] == LookupC && isCNum(runes[i:]) {
+		if nextTable == LookupC && isCNum(runes[i:]) {
 			sym = parseCNum([2]rune(runes[i : i+2]))
 			i++ // encode two runes at once
 		}
-		bits, val := lookup(sym, activeTables[shift])
+		bits, val := lookup(sym, nextTable)
 		c128.add(ModuleBits(bits)...)
 		cksm.add(val)
 	}
@@ -146,7 +143,7 @@ func (c *barcode) draw() Code128 {
 	return Code128{img}
 }
 
-func determineTable(rs []rune, currentTable TableIndex) TableIndex {
+func determineIndices(text ASCII) []TableIndex {
 	// ~$ man 7 ascii
 	isAsciiPrintable := func(r rune) bool {
 		return r >= 0x20 /* space */ && r <= 0x7F /* DEL */
@@ -175,32 +172,70 @@ func determineTable(rs []rune, currentTable TableIndex) TableIndex {
 		return isNumber(rs[0]) && isNumber(rs[1])
 	}
 
-	if isC(rs) {
-		if currentTable == LookupC || isC(rs[2:]) {
-			return LookupC
+	rs := []rune(text)
+
+	allAs := true
+	for i := range rs {
+		if !isA(rs[i:]) {
+			allAs = false
+			break
+		}
+		if isC(rs) {
+			if (i > 0 && isC(rs[i-1:])) || isC(rs[2:]) {
+				allAs = false
+				break
+			}
 		}
 	}
-	if isB(rs) {
-		if currentTable == LookupA {
-			if isA(rs) { // stay in A
-				return LookupA
-			}
-			if len(rs) >= 2 && !isB(rs[1:]) {
-				return LookupShift
-			}
-		}
-		return LookupB
-	}
-	if isA(rs) {
-		if currentTable == LookupB {
-			if len(rs) >= 2 && !isA(rs[1:]) {
-				return LookupShift
-			}
-		}
-		return LookupA
+	if allAs {
+		return make([]TableIndex, len(rs)) // filled with all A's (A = 0)
 	}
 
-	panic(fmt.Errorf("cannot encode symbol: %U %U (`%s')", rs[0], rs[1], string(rs[0:2])))
+	indices := make([]TableIndex, len(rs))
+	currentTable := LookupNone
+	for i := 0; i < len(rs); i++ {
+		rs := rs[i:]
+		if isC(rs) {
+			if currentTable == LookupC || isC(rs[2:]) {
+				indices[i] = LookupC
+				i++ // skip one char
+				indices[i] = LookupC
+				currentTable = LookupC
+				continue
+			}
+		}
+		if isB(rs) { // favor B over A
+			if currentTable == LookupA {
+				if isA(rs) { // stay in A
+					indices[i] = LookupA
+					currentTable = LookupA
+					continue
+				}
+				if len(rs) >= 2 && !isB(rs[1:]) {
+					indices[i] = LookupShift
+					currentTable = LookupShift
+					continue
+				}
+			}
+			indices[i] = LookupB
+			currentTable = LookupB
+			continue
+		}
+		if isA(rs) {
+			if currentTable == LookupB {
+				if len(rs) >= 2 && !isA(rs[1:]) {
+					indices[i] = LookupShift
+					currentTable = LookupShift
+					continue
+				}
+			}
+			indices[i] = LookupA
+			currentTable = LookupA
+			continue
+		}
+		panic(fmt.Errorf("cannot encode symbol: %U %U (`%s')", rs[0], rs[1], string(rs[0:2])))
+	}
+	return indices
 }
 
 func isCNum(rs []rune) bool {
