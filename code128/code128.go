@@ -12,20 +12,24 @@ import (
 )
 
 type Code128 struct {
-	*image.Gray16
+	*image.Gray16 // @todo: byte array?
 }
 
 func (c Code128) Scale(width, height int) (image.Image, error) {
 	oldWidth := c.Bounds().Dx()
 	if width < oldWidth {
-		return nil, errors.New("unable to shrink image, new width too small")
+		return nil, errors.New("unable to shrink image: new width too small")
+	}
+	if height <= 0 {
+		return nil, errors.New("unable to shrink image: new height too small")
 	}
 
 	scaledImage := image.NewGray16(image.Rectangle{image.Point{0, 0}, image.Point{width, height}})
 
 	// scale width
+	// @todo: don't scale QZ. Don't include QZ at all in Code128? (only add it to the scaled image)
 	scale := width / oldWidth
-	qz := float64(width % oldWidth) / 2
+	qz := float64(width%oldWidth) / 2
 	qzs := int(math.Floor(qz))
 	qze := int(math.Ceil(qz))
 	for x := 0; x < qzs; x++ { // extend quiet zone start
@@ -50,6 +54,26 @@ func (c Code128) Scale(width, height int) (image.Image, error) {
 	return scaledImage, nil
 }
 
+type ScaleMode int
+
+const (
+	ScaleWidthAndHeight ScaleMode = iota
+	ScaleHeight
+	// no point in scaling only the width: what do you want to do with a 1px high barcode?
+)
+
+func (c Code128) ScaleBy(factor float64, mode ScaleMode) (image.Image, error) {
+	w, h := c.Bounds().Dx(), c.Bounds().Dy()
+	switch mode {
+	case ScaleWidthAndHeight:
+		return c.Scale(int(math.Floor(float64(w)*factor)), int(math.Floor(float64(h)*factor)))
+	case ScaleHeight:
+		return c.Scale(w, int(math.Floor(float64(h)*factor)))
+	default:
+		return nil, errors.New("invalid scaling mode")
+	}
+}
+
 type ASCII string
 
 func NewASCII(text string) (ASCII, error) {
@@ -71,7 +95,7 @@ func isASCII(text string) bool {
 func Encode(text ASCII) (Code128, error) {
 	indices := determineIndices(text)
 
-	c128  := &barcode{}
+	c128 := &barcode{}
 	c128.add(QuietSpace)
 
 	startSym := [...]int{START_A - SpecialOffset, START_B - SpecialOffset, START_C - SpecialOffset}[indices[0]]

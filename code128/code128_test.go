@@ -8,8 +8,8 @@ import (
 )
 
 func TestDetermineIndices(t *testing.T) {
-	cases := []struct{
-		text string
+	cases := []struct {
+		text     string
 		expected []TableIndex
 	}{
 		{"Abc12", []TableIndex{LookupB, LookupB, LookupB, LookupB, LookupB}},
@@ -198,8 +198,62 @@ func TestEncodeScale(t *testing.T) {
 	}
 }
 
+func TestEncodeScaleBy(t *testing.T) {
+	cases := []struct {
+		input   string
+		scale   float64
+		mode    ScaleMode
+		success bool
+	}{
+		{"Hello, World!", 5, ScaleWidthAndHeight, true},
+		{"11223467", 2, ScaleWidthAndHeight, true},
+		{"\026\025", 3, ScaleHeight, true},
+		{"hello", 1.5, ScaleWidthAndHeight, true},
+		{"112269420", 1.7, ScaleHeight, true},
+		{"yoyoyoyo", 3.257, ScaleHeight, true},
+		{"439721-hello-WORLD", 0.8, ScaleWidthAndHeight, false},
+		{"hello\026world", 0.1, ScaleHeight, false},
+		{"\026\025h\006", 0.215, ScaleHeight, false},
+		{"\026\025H\006", 10, ScaleHeight, true},
+		{"eaou", 1, ScaleWidthAndHeight, true},
+		{"eaou", 1, ScaleHeight, true},
+	}
+
+	for i, c := range cases {
+		t.Logf("case %d: %+v\n", i, c)
+		text, err := NewASCII(c.input)
+		if err != nil {
+			t.Errorf("cannot convert %s to ASCII: %v", c.input, err)
+			continue
+		}
+		bc, err := Encode(text)
+		if err != nil {
+			t.Errorf("failed to encode `%s': %v", text, err)
+			continue
+		}
+		img, err := bc.ScaleBy(c.scale, c.mode)
+		if err != nil {
+			if c.success {
+				t.Error(err)
+			}
+			continue
+		}
+		if !c.success {
+			t.Errorf("should have failed, but didn't: `%s'", c.input)
+		}
+		bs, _, err := Decode(img)
+		if err != nil {
+			t.Errorf("failed to decode `%s': %v", c.input, err)
+			continue
+		}
+		if string(bs) != c.input {
+			t.Errorf("got: `%s', want: `%s'", string(bs), c.input)
+		}
+	}
+}
+
 func TestEncodeSyms(t *testing.T) {
-	cases := []struct{
+	cases := []struct {
 		text string
 		syms []int
 	}{
